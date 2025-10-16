@@ -300,42 +300,119 @@ class ENDFNumericDecayParser:
         return corr
     
     def _parse_mf8_mt457(self) -> Dict[str, Any]:
+        """
+        Parse an MF=8 MT=457 section (radioactive decay data for one level).
+        
+        ENDF-102 Manual Section 8.1: Radioactive Decay Data
+        
+        This function parses ONE complete MF=8 MT=457 section, which contains
+        decay data for ONE isomeric state of ONE nuclide.
+        
+        Returns:
+            Dictionary containing all decay data for this level
+        """
+        
+        # ===================================================================
+        # RECORD 1: HEAD RECORD - Identifies the nuclide and decay level
+        # ===================================================================
+        # ZA:   Nuclide identifier (Z*1000 + A, e.g., 35074 for Br-74)
+        # AWR:  Atomic weight ratio
+        # LIS:  Isomeric state level (0=ground, 1=1st excited, 2=2nd excited, etc.)
+        #       **CRITICAL**: Different LIS values have separate MF=8 MT=457 sections!
+        # LISO: Isomeric state flag (0=ground, 1=excited)
+        # NST:  Stability flag (0=radioactive, 1=stable)
+        # NSP:  Number of radiation spectra to follow (gamma, beta, X-ray, etc.)
+        
         za, awr, lis, liso, nst, nsp = self._get_head_record()
         data = {"ZA": za, "AWR": awr, "LIS": lis, "LISO": liso, "NST": nst, "NSP": nsp}
         
+        # ===================================================================
+        # STABLE NUCLIDES (NST=1): Skip detailed decay data
+        # ===================================================================
         if nst == 1:
-            self._get_list_record()
+            # For stable nuclides, only spin and parity are given
+            self._get_list_record()  # Skip first LIST record
             (spi, par, *_), _ = self._get_list_record()
-            data["SPI"] = spi
-            data["PAR"] = par
+            data["SPI"] = spi   # Nuclear spin
+            data["PAR"] = par   # Parity
             return data
         
+        # ===================================================================
+        # RECORD 2: HALF-LIFE AND EXCITATION ENERGIES
+        # ===================================================================
+        # For radioactive nuclides (NST=0), this LIST record contains:
+        # C1: Half-life (seconds)
+        # C2: Half-life uncertainty
+        # N1: Number of excitation energy pairs (NC)
+        # Values array: Pairs of (excitation energy, uncertainty) for daughter states
+        
         items, values = self._get_list_record()
-        data["T1/2"] = (items[0], items[1])
-        data["NC"] = items[4] // 2
-        data["Ex"] = list(zip(values[::2], values[1::2]))
+        data["T1/2"] = (items[0], items[1])  # (half-life, uncertainty) in seconds
+        data["NC"] = items[4] // 2            # Number of daughter excitation states
+        data["Ex"] = list(zip(values[::2], values[1::2]))  # (energy, uncertainty) pairs
+        
+        # ===================================================================
+        # RECORD 3: SPIN/PARITY AND DECAY MODES
+        # ===================================================================
+        # This LIST record contains decay mode information
+        # C1: SPI (nuclear spin)
+        # C2: PAR (parity: +1.0 or -1.0)
+        # N2: NDK (number of decay modes)
+        # Values: 6 values per decay mode:
+        #   [0] RTYP: Decay type (0.0=γ, 1.0=β-, 2.0=EC/β+, 4.0=α, etc.)
+        #   [1] RFS: Isomeric state flag for daughter
+        #   [2] Q: Q-value (decay energy in eV)
+        #   [3] dQ: Q-value uncertainty
+        #   [4] BR: Branching ratio (as fraction, e.g., 1.0 = 100%)
+        #   [5] dBR: Branching ratio uncertainty
         
         items, values_modes = self._get_list_record()
         data["SPI"], data["PAR"], *_ = items
-        data["NDK"] = int(items[5])
+        data["NDK"] = int(items[5])  # Number of decay modes
         data["modes"] = []
         
+        # Parse each decay mode
         if values_modes.size >= 6 * data["NDK"]:
             for i in range(data["NDK"]):
-                rtyp = float(values_modes[6 * i])
-                rfs = float(values_modes[6 * i + 1])
-                q = (float(values_modes[6 * i + 2]), float(values_modes[6 * i + 3]))
-                br = (float(values_modes[6 * i + 4]), float(values_modes[6 * i + 5]))
+                rtyp = float(values_modes[6 * i])      # Decay type
+                rfs = float(values_modes[6 * i + 1])   # Daughter isomeric state
+                q = (float(values_modes[6 * i + 2]), float(values_modes[6 * i + 3]))  # (Q-value, uncertainty)
+                br = (float(values_modes[6 * i + 4]), float(values_modes[6 * i + 5])) # (branching, uncertainty)
                 data["modes"].append({"RTYP": rtyp, "RFS": rfs, "Q": q, "BR": br})
+        
+        # ===================================================================
+        # RECORDS 4+: RADIATION SPECTRA (NSP spectra)
+        # ===================================================================
+        # Each spectrum describes one type of radiation emitted during decay
+        # Common spectrum types (STYP):
+        #   0 = Gamma rays
+        #   2 = Beta+ particles  
+        #   8 = X-rays
+        #   9 = Auger electrons
+        # 
+        # For each spectrum, we read:
+        # 1. Summary LIST record with mean energies
+        # 2. Discrete transitions (if LCON != 1)
+        # 3. Continuous spectrum (if LCON != 2)
+        # 4. Covariance data (if LCOV != 0)
         
         data["spectra"] = []
         for spectrum_idx in range(nsp):
             try:
+                # First LIST record for this spectrum: Summary information
                 items, values = self._get_list_record()
                 _, styp, lcon, lcov, _, ner = items
+                # STYP: Radiation type (0=γ, 2=β+, 8=X-ray, 9=Auger)
+                # LCON: Continuum flag (0=discrete+continuous, 1=continuous only, 2=discrete only)
+                # LCOV: Covariance flag (0=none, 1=discrete only, 2=continuous only, 3=both)
+                # NER:  Number of discrete energy records
+                
                 spectrum = {"STYP": styp, "LCON": lcon, "LCOV": lcov, "NER": ner}
+                # FD: Discrete normalization (value, uncertainty) - often used for total branching
                 spectrum["FD"] = tuple(values[0:2].astype(float))
+                # ER_AV: Average radiation energy (value, uncertainty) in eV
                 spectrum["ER_AV"] = tuple(values[2:4].astype(float))
+                # FC: Continuum normalization (value, uncertainty)
                 spectrum["FC"] = tuple(values[4:6].astype(float))
                 
                 if lcon != 1:
@@ -963,46 +1040,112 @@ if __name__ == "__main__":
         with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
         
-        # Find all MF=8 MT=457 sections with their MAT numbers
+        # STEP 1: COMPREHENSIVE SECTION SCANNING
+        # ======================================
+        # Scan entire file line-by-line to find ALL MF=8 MT=457 sections
+        # Each section represents one decay level of one nuclide
+        # Different isomeric states (LIS) of the same nuclide have separate sections
+        
         section_info = []  # List of (line_num, mat_num) tuples
         for i, line in enumerate(lines):
+            # ENDF lines must be at least 75 characters to contain MF/MT info
             if len(line) >= 75:
                 try:
-                    mat = int(line[66:70].strip() or 0)
-                    mf = int(line[70:72].strip() or 0)
-                    mt = int(line[72:75].strip() or 0)
-                    seq = int(line[75:80].strip() or 0)
-                    if mf == 8 and mt == 457 and seq == 1:  # HEAD record
+                    # Extract ENDF line metadata from fixed-width columns:
+                    mat = int(line[66:70].strip() or 0)   # Material number (cols 67-70)
+                    mf = int(line[70:72].strip() or 0)    # File number (cols 71-72)
+                    mt = int(line[72:75].strip() or 0)    # Section number (cols 73-75)
+                    seq = int(line[75:80].strip() or 0)   # Sequence number (cols 76-80)
+                    
+                    # Look for HEAD records (seq=1) of radioactive decay sections (MF=8, MT=457)
+                    # Each HEAD record marks the start of a new decay section
+                    # CRITICAL: Different LIS levels of same nuclide have separate HEAD records
+                    # CRITICAL: Different MAT numbers may represent different LIS of same nuclide
+                    # We MUST capture ALL HEAD records to get ALL levels
+                    if mf == 8 and mt == 457 and seq == 1:
                         section_info.append((i, mat))
+                        # Note: At this point we don't know the LIS value yet - 
+                        # that's in the HEAD record data itself, which we'll parse later
                 except:
+                    # Skip lines with malformed or missing metadata
                     continue
         
+        # Verify we found at least one decay section
         if not section_info:
             print("ERROR: No MF=8 MT=457 section found in file")
             print("This file may not contain radioactive decay data.")
             exit(1)
         
-        # Extract unique MAT numbers
+        # Extract unique MAT numbers for reporting
         unique_mats = sorted(set([mat for _, mat in section_info]))
         
-        print(f"Found {len(section_info)} decay section(s) across {len(unique_mats)} material(s): MAT={', '.join(map(str, unique_mats))}")
+        # Report what we found
+        print(f"Found {len(section_info)} decay section(s) across {len(unique_mats)} material(s): MAT={', '.join(map(str, unique_mats[:20]))}")
+        if len(unique_mats) > 20:
+            print(f"  ... and {len(unique_mats) - 20} more materials")
         
-        # Parse each section
+        # STEP 2: PARSE EACH DECAY SECTION
+        # =================================
+        # Process each MF=8 MT=457 section independently
+        # Each section may have different LIS (isomeric state level)
+        # Track which ZA+LIS combinations we successfully parse
+        
+        parsed_sections = {}  # Track (ZA, LIS) combinations
+        
         for start_pos, mat_num in section_info:
             try:
+                # Create a fresh parser for each section
                 parser = ENDFNumericDecayParser()
                 parser.load_file(input_file)
-                parser._pos = start_pos
+                parser._pos = start_pos  # Position at this section's HEAD record
+                
+                # Parse this decay section
                 result = parser._parse_mf8_mt457()
                 result["MAT"] = mat_num  # Store MAT number with result
+                
+                # Track what we parsed
+                za = result["ZA"]
+                lis = result["LIS"]
+                parsed_sections[(za, lis)] = mat_num
+                
                 all_results.append(result)
-                print(f"✓ Successfully parsed MAT={mat_num}, LIS={result['LIS']}")
+                print(f"✓ Successfully parsed MAT={mat_num}, ZA={za}, LIS={lis}")
+                
             except (EOFError, IndexError, ValueError) as e:
                 print(f"⚠ WARNING: Skipped MAT={mat_num} (incomplete data): {str(e)[:60]}")
                 continue
             except Exception as e:
                 print(f"✗ ERROR: Failed to parse MAT={mat_num}: {str(e)[:60]}")
                 continue
+        
+        # STEP 3: VERIFY ALL LEVELS WERE CAPTURED
+        # ========================================
+        # Check that we didn't miss any LIS levels
+        print(f"\n📊 Parsing Summary:")
+        print(f"   Total sections found: {len(section_info)}")
+        print(f"   Successfully parsed: {len(all_results)}")
+        print(f"   Failed/skipped: {len(section_info) - len(all_results)}")
+        
+        # Group by nuclide to show LIS distribution
+        by_nuclide = {}
+        for (za, lis), mat in parsed_sections.items():
+            if za not in by_nuclide:
+                by_nuclide[za] = []
+            by_nuclide[za].append((lis, mat))
+        
+        print(f"   Unique nuclides: {len(by_nuclide)}")
+        
+        # Show examples of multi-level nuclides
+        multi_level = {za: levels for za, levels in by_nuclide.items() if len(levels) > 1}
+        if multi_level:
+            print(f"   Multi-level nuclides: {len(multi_level)}")
+            print(f"   Examples:")
+            for za, levels in sorted(multi_level.items())[:5]:
+                Z = za // 1000
+                A = za % 1000
+                element = ATOMIC_SYMBOL.get(Z, f'Z{Z}')
+                lis_values = sorted([lis for lis, _ in levels])
+                print(f"     {element}-{A}: LIS = {lis_values}")
         
         # Check if we have any results
         if not all_results:
