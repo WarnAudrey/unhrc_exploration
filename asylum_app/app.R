@@ -21,13 +21,13 @@ ui <- fluidPage(
         label = "Choose a country", 
         choices = choices
     ),
-    plotOutput(outputId = "map")
+    plotlyOutput(outputId = "map")
 )
 
 # This defines a server that doesn't do anything yet, but is needed to run the app.
 server <- function(input, output) {
     # Will be next!
-    output$map <- renderPlot({
+    output$map <- renderPlotly({
         iso3 <- input$iso3
         country_name <- countrycode(iso3, origin = 'iso3c', destination = 'country.name')
         
@@ -41,14 +41,14 @@ server <- function(input, output) {
         
         asylum_map <- ggplot(data = country_shapefile) +
             geom_polygon(
-                mapping = aes(x = long, y = lat, group = group, fill = Asylum.seekers)
+                mapping = aes(x = long, y = lat, group = group, fill = Asylum.seekers, 
+                             text = paste("Country:", region, "<br>Asylum Seekers:", Asylum.seekers))
             ) +
             labs(title = paste("Number of People Seeking Asylum in", country_name), 
                  x = "", y = "", fill = "Num. People") +
             theme_minimal()
-            
         
-        return(asylum_map)
+        ggplotly(asylum_map, tooltip = "text")
     })
 }
 
