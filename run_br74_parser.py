@@ -738,13 +738,12 @@ def format_and_print_table(parsed_data):
     print("ENDF Radioactive Decay Data for Br-74")
     print("="*135)
     print()
-    print(f"Diagnostic Information:")
+    print(f"Diagnostic Information (ENDF-102 compliant):")
     print(f"  RTYP: {rtyp} (2.0 = EC/β+ decay)")
     print(f"  Total Branching: {total_br_pct:.4f}%")
     print(f"  β+ Branching: {bplus_br_pct:.4f}%")
     print(f"  EC Branching: {ec_br_pct:.4f}%")
-    if has_511_peak if 'has_511_peak' in locals() else False:
-        print(f"  511 keV annihilation peak: FOUND ✓")
+    print(f"  511 keV annihilation peak: {'FOUND ✓' if has_511_peak else 'Not found'}")
     print()
     
     # Print table header
