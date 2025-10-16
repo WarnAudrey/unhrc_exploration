@@ -415,97 +415,178 @@ class ENDFNumericDecayParser:
                 # FC: Continuum normalization (value, uncertainty)
                 spectrum["FC"] = tuple(values[4:6].astype(float))
                 
+                # ============================================================
+                # DISCRETE TRANSITIONS (if LCON != 1)
+                # ============================================================
+                # Read NER discrete transition records
+                # Each transition describes a specific gamma ray, beta+ particle, etc.
+                
                 if lcon != 1:
                     spectrum["discrete"] = []
-                    # Try to read NER records, stop early if we hit EOF
+                    # Try to read NER discrete transition records
+                    # Stop early if we hit EOF (handles incomplete files)
                     for record_idx in range(ner):
                         try:
+                            # Each discrete transition is one LIST record
                             items_d, values_d = self._get_list_record()
                             discrete = {}
+                            # ER: Transition energy (value, uncertainty) in eV
                             discrete["ER"] = tuple(items_d[0:2])
                             
-                            # Handle incomplete data gracefully
+                            # Handle incomplete data gracefully (for partial ENDF files)
                             if len(values_d) == 0:
                                 continue
                             
+                            # RTYP: Decay mode that produced this radiation
                             discrete["RTYP"] = float(values_d[0]) if len(values_d) > 0 else 0.0
+                            # TYPE: Transition type (0=γ to ground, 1=γ to excited, etc.)
                             discrete["TYPE"] = float(values_d[1]) if len(values_d) > 1 else 0.0
                             
-                            if styp == 0:  # Gamma spectrum
+                            # ========================================
+                            # GAMMA SPECTRUM (STYP=0): 
+                            # ========================================
+                            # For gamma rays, we get emission probabilities and conversion coefficients
+                            if styp == 0:  
                                 if len(values_d) >= 12:
+                                    # RI:   Absolute gamma intensity (photons per 100 decays)
                                     discrete["RI"] = tuple(values_d[2:4].astype(float))
+                                    # RIS:  Relative gamma intensity (normalized)
                                     discrete["RIS"] = tuple(values_d[4:6].astype(float))
+                                    # RICC: Total internal conversion coefficient
                                     discrete["RICC"] = tuple(values_d[6:8].astype(float))
+                                    # RICK: K-shell conversion coefficient
                                     discrete["RICK"] = tuple(values_d[8:10].astype(float))
+                                    # RICL: L-shell conversion coefficient
                                     discrete["RICL"] = tuple(values_d[10:12].astype(float))
-                            elif styp == 2:  # Beta+ spectrum
+                            
+                            # ========================================
+                            # BETA+ SPECTRUM (STYP=2):
+                            # ========================================
+                            # For beta+ particles, we get emission intensity
+                            elif styp == 2:  
                                 if len(values_d) >= 6:
+                                    # INTENSITY: Beta+ emission intensity (percent per decay)
                                     discrete["INTENSITY"] = tuple(values_d[4:6].astype(float))
                             
                             discrete["_raw_values"] = values_d
                             spectrum["discrete"].append(discrete)
                         except (IndexError, ValueError, EOFError) as e:
                             # EOF or error - stop trying to read more discrete records
+                            # This handles truncated/incomplete ENDF files
                             break
                 
-                # Try to read optional continuous spectrum
+                # ========================================
+                # CONTINUOUS SPECTRUM (if LCON != 2)
+                # ========================================
+                # Some radiation has a continuous energy distribution
+                # Stored as a TAB1 record (tabulated function)
                 if lcon != 0:
                     try:
                         params, rp = self._get_tab1_record()
+                        # RTYP: Decay mode producing this continuous spectrum
+                        # RP: Probability function vs energy (Tabulated1D object)
                         spectrum["continuous"] = {"RTYP": params[0], "RP": rp}
                     except (EOFError, IndexError, ValueError):
-                        pass  # Skip if not available
+                        pass  # Skip if not available (incomplete file)
                 
-                # Try to read optional covariance data
+                # ========================================
+                # COVARIANCE DATA (if LCOV != 0)
+                # ========================================
+                # Uncertainty/correlation information for the spectra
+                
+                # Continuous spectrum covariance
                 if lcov not in (0, 2) and lcon != 0:
                     try:
                         items_c, values_c = self._get_list_record()
                         covar_cont = {"LB": items_c[3]}
-                        covar_cont["Ek"] = np.array(values_c[::2], dtype=float)
-                        covar_cont["Fk"] = np.array(values_c[1::2], dtype=float)
+                        covar_cont["Ek"] = np.array(values_c[::2], dtype=float)  # Energy points
+                        covar_cont["Fk"] = np.array(values_c[1::2], dtype=float) # Covariance values
                         spectrum["continuous_covariance"] = covar_cont
                     except (EOFError, IndexError, ValueError):
-                        pass
+                        pass  # Skip if not available
                 
+                # Discrete spectrum covariance
                 if lcov not in (0, 1):
                     try:
                         (__, ____, ls, lb, ne, nerp), values_dc = self._get_list_record()
                         covar_disc = {"LS": ls, "LB": lb, "NE": ne, "NERP": nerp}
-                        covar_disc["Ek"] = np.array(values_dc[:nerp], dtype=float)
-                        covar_disc["Fkk"] = np.array(values_dc[nerp:], dtype=float)
+                        covar_disc["Ek"] = np.array(values_dc[:nerp], dtype=float)  # Energy points
+                        covar_disc["Fkk"] = np.array(values_dc[nerp:], dtype=float) # Covariance matrix
                         spectrum["discrete_covariance"] = covar_disc
                     except (EOFError, IndexError, ValueError):
-                        pass
+                        pass  # Skip if not available
                 
+                # Add this spectrum to the list
                 data["spectra"].append(spectrum)
+                
             except (EOFError, IndexError, ValueError) as e:
-                # If we can't even start reading this spectrum, we're done
+                # If we can't even start reading this spectrum, we're done with spectra
+                # This handles truncated ENDF files gracefully
                 break
         
         return data
 
 
 def extract_bplus_branching(parsed_data):
-    """Extract B+ branching ratio by summing individual β+ transition intensities."""
+    """
+    Extract β+ branching ratio by summing individual β+ transition intensities.
+    
+    ENDF-102 Manual Note:
+    For EC/β+ decay (RTYP=2.0), the total branching ratio includes BOTH:
+    - β+ emission (positron emission)
+    - Electron capture (EC)
+    
+    To separate them:
+    1. β+ branching = sum of all individual β+ transition intensities
+    2. EC branching = Total branching - β+ branching
+    
+    Args:
+        parsed_data: Parsed decay data dictionary
+    
+    Returns:
+        β+ branching ratio as a percentage (0-100)
+    """
+    # Look for the beta+ spectrum (STYP=2)
     for spec in parsed_data["spectra"]:
         if spec["STYP"] == 2 and "discrete" in spec:  # Beta+ spectrum
             total_intensity = 0.0
             
+            # Sum all individual β+ transition intensities
+            # Each discrete transition contributes to the total β+ emission
             for discrete in spec["discrete"]:
                 if "INTENSITY" in discrete:
-                    intensity = discrete["INTENSITY"][0]
+                    intensity = discrete["INTENSITY"][0]  # Intensity in percent
                     total_intensity += intensity
             
+            # Return the calculated total, or fall back to FD normalization
             if total_intensity > 0:
                 return total_intensity
             else:
+                # If no discrete transitions, use FD (discrete normalization)
+                # FD is typically a fraction (0-1) or percentage (0-100)
                 return spec["FD"][0] * 100.0 if spec["FD"][0] > 1.0 else spec["FD"][0]
     
+    # No beta+ spectrum found
     return 0.0
 
 
 def format_halflife(halflife_seconds):
-    """Format half-life in human-readable units."""
+    """
+    Format half-life in human-readable units.
+    
+    Converts half-life from seconds (ENDF standard) to appropriate units:
+    - Seconds (< 1 minute)
+    - Minutes (< 1 hour)
+    - Hours (< 1 day)
+    - Days (< 1 year)
+    - Years (>= 1 year)
+    
+    Args:
+        halflife_seconds: Half-life in seconds
+    
+    Returns:
+        Formatted string with appropriate units
+    """
     if halflife_seconds < 60:
         return f"{halflife_seconds:.2f} seconds"
     elif halflife_seconds < 3600:
@@ -519,12 +600,35 @@ def format_halflife(halflife_seconds):
 
 
 def verify_all_levels(all_results):
-    """Verify and report on all decay levels found for each nuclide."""
+    """
+    Verify and report on all decay levels found for each nuclide.
+    
+    This function provides quality assurance by:
+    1. Grouping all parsed sections by nuclide (ZA)
+    2. Identifying all LIS (isomeric state) levels found
+    3. Checking for gaps in the LIS sequence (0, 1, 2, ...)
+    4. Warning about potentially missing levels
+    5. Showing half-life for each level to help identify them
+    
+    IMPORTANT: In ENDF-6 format, different isomeric states of the same nuclide
+    are stored as SEPARATE sections (often with different MAT numbers).
+    For example:
+    - Br-74 ground state (LIS=0) → MAT=837
+    - Br-74 excited state (LIS=1) → MAT=838
+    
+    This function ensures we've captured ALL levels from the file.
+    
+    Args:
+        all_results: List of parsed decay data dictionaries
+    """
     print("\n" + "="*140)
-    print("LEVEL COMPLETENESS CHECK")
+    print("LEVEL COMPLETENESS CHECK - Verifying ALL Isomeric States Captured")
     print("="*140)
     
-    # Group by nuclide
+    # ===================================================================
+    # GROUP ALL RESULTS BY NUCLIDE (ZA)
+    # ===================================================================
+    # Multiple results may have same ZA but different LIS (isomeric levels)
     nuclides = {}
     for result in all_results:
         za = result["ZA"]
@@ -532,12 +636,22 @@ def verify_all_levels(all_results):
             nuclides[za] = []
         nuclides[za].append(result)
     
+    # ===================================================================
+    # CHECK EACH NUCLIDE FOR LEVEL COMPLETENESS
+    # ===================================================================
     for za, states in sorted(nuclides.items()):
-        Z = za // 1000
-        A = za % 1000
-        element = ATOMIC_SYMBOL.get(Z, f"Z{Z}")
+        # Extract Z (atomic number) and A (mass number) from ZA
+        Z = za // 1000   # Integer division gives atomic number
+        A = za % 1000    # Remainder gives mass number
+        element = ATOMIC_SYMBOL.get(Z, f"Z{Z}")  # Get element symbol (e.g., "Br")
         
-        # Sort by LIS
+        # ===================================================================
+        # SORT LEVELS BY LIS (isomeric state number)
+        # ===================================================================
+        # LIS=0: Ground state
+        # LIS=1: First excited state (often labeled as 'm' or 'm1')
+        # LIS=2: Second excited state (labeled as 'm2')
+        # etc.
         states_sorted = sorted(states, key=lambda x: x["LIS"])
         lis_values = [s["LIS"] for s in states_sorted]
         mat_values = [s.get("MAT", "?") for s in states_sorted]
@@ -546,14 +660,23 @@ def verify_all_levels(all_results):
         print(f"  Found {len(states)} decay level(s): LIS = {lis_values}")
         print(f"  Corresponding MAT numbers: {mat_values}")
         
-        # Check for gaps in LIS sequence
+        # ===================================================================
+        # GAP DETECTION: Check for missing LIS levels
+        # ===================================================================
+        # Expected: LIS should be sequential starting from 0
+        # E.g., if we have 3 levels, expect LIS = [0, 1, 2]
+        # If we find [0, 2], then LIS=1 is missing!
         expected_lis = list(range(len(states)))
+        
         if lis_values != expected_lis:
+            # Found a gap or non-sequential LIS values
             missing = set(expected_lis) - set(lis_values)
             if missing:
                 print(f"  ⚠ WARNING: Possible missing levels - expected LIS values {expected_lis}, found {lis_values}")
                 print(f"            Missing LIS: {sorted(missing)}")
+                print(f"            → Check if JEFF database has incomplete data for this nuclide")
         else:
+            # All good - sequential LIS from 0 to N-1
             print(f"  ✓ Level sequence is complete (LIS 0 through {len(states)-1})")
         
         # Show details for each level
@@ -975,27 +1098,58 @@ def print_detailed_data(parsed_data):
 
 
 if __name__ == "__main__":
+    """
+    ═══════════════════════════════════════════════════════════════════════════
+    MAIN EXECUTION BLOCK
+    ═══════════════════════════════════════════════════════════════════════════
+    
+    This is the entry point when running: python3 JEFF_ENDF_parser.py <file>
+    
+    Overall Workflow:
+    -----------------
+    1. Parse command-line arguments (--verbose, --output, filename)
+    2. Validate input file exists
+    3. Scan entire ENDF file for ALL MF=8 MT=457 sections (all MAT, all LIS)
+    4. Parse each section independently (fault-tolerant)
+    5. Group results by nuclide (ZA) and verify ALL levels captured
+    6. Generate formatted output with level completeness check
+    7. Save to file and display console summary
+    
+    Design Philosophy:
+    ------------------
+    - Universal: Works with any ENDF file, any MAT numbers, any nuclides
+    - Fault-tolerant: Continues parsing even if some sections fail
+    - Complete: Captures ALL isomeric states (LIS) for each nuclide
+    - Verifiable: Reports what was found and warns about missing data
+    """
     import sys
     import os
     
-    # Check for verbose/full flag and output file
-    verbose = False
-    file_arg = None
-    output_file = None
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 1: COMMAND-LINE ARGUMENT PARSING
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Parse command-line arguments to determine mode and file paths
     
+    verbose = False       # --verbose flag: Show ALL transition details
+    file_arg = None       # Input ENDF file path (required)
+    output_file = None    # Output file path (optional, auto-generated if not provided)
+    
+    # Manual argument parsing (more flexible than argparse for simple cases)
     i = 1
     while i < len(sys.argv):
         arg = sys.argv[i]
         if arg in ['--verbose', '--full', '-v', '--all']:
-            verbose = True
+            verbose = True  # Enable verbose output mode
         elif arg in ['--output', '-o']:
+            # Next argument should be the output filename
             if i + 1 < len(sys.argv):
                 output_file = sys.argv[i + 1]
-                i += 1
+                i += 1  # Skip next arg since we consumed it
             else:
                 print("ERROR: --output requires a filename argument")
                 exit(1)
         elif not arg.startswith('-'):
+            # Non-flag argument is the input file
             file_arg = arg
         i += 1
     
@@ -1025,20 +1179,31 @@ if __name__ == "__main__":
         print("="*80)
         exit(1)
     
-    # Auto-generate output filename if not specified
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 2: FILE VALIDATION AND OUTPUT FILE SETUP
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    # Auto-generate output filename if user didn't specify one
+    # Example: "jeff-40-radioactive.endf" → "jeff-40-radioactive_parsed_output.txt"
     if output_file is None:
         base_name = os.path.splitext(os.path.basename(file_arg))[0]
         output_file = f"{base_name}_parsed_output.txt"
     
-    # Read from file
+    # Set input file path
     input_file = file_arg
     
     try:
-        # Parse ALL MF=8 MT=457 sections in the file (all MAT types)
-        all_results = []
+        # ═══════════════════════════════════════════════════════════════════════════
+        # STEP 3: READ ENTIRE FILE INTO MEMORY
+        # ═══════════════════════════════════════════════════════════════════════════
+        # For large JEFF files (~100-200 MB), this is still efficient
+        # Modern systems can easily handle this in RAM
+        # Alternative would be streaming, but we need multiple passes for section detection
+        
+        all_results = []  # Will store parsed data for ALL decay sections
         
         with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
+            lines = f.readlines()  # Read all lines at once
         
         # STEP 1: COMPREHENSIVE SECTION SCANNING
         # ======================================
