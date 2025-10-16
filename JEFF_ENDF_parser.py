@@ -741,7 +741,7 @@ def print_all_energies(all_results):
         print(f"Half-life: {halflife_str}")
         print("="*200)
         
-        if "spectra" not in result:
+        if "spectra" not in result or not result["spectra"]:
             print("  (No decay spectra - stable nuclide)")
             continue
         
@@ -1009,6 +1009,10 @@ def print_energy_distribution_summary(all_results):
         # Sort by energy
         all_energies.sort(key=lambda x: x['energy'])
         
+        if not all_energies:
+            print("  (No energy data available)")
+            continue
+        
         print()
         print(f"{'Energy (keV)':>18s}  {'±':>12s}  {'Type':>10s}  {'Intensity':>15s}  {'Mode':>10s}")
         print("-"*200)
@@ -1180,7 +1184,7 @@ def format_and_print_combined_table(all_results):
                 mean_gamma = 0.0
                 mean_gamma_unc = 0.0
                 
-                if "spectra" in result:
+                if "spectra" in result and result["spectra"]:
                     for spec in result["spectra"]:
                         styp = spec["STYP"]
                         er_av_kev = spec["ER_AV"][0] / 1000.0
@@ -1366,7 +1370,7 @@ def print_detailed_data(parsed_data):
     print("="*200)
     print()
     
-    if "spectra" not in parsed_data:
+    if "spectra" not in parsed_data or not parsed_data.get("spectra"):
         print("(Stable nuclide - no decay transitions)")
         print()
         if "SPI" in parsed_data and "PAR" in parsed_data:
