@@ -99,19 +99,58 @@ class Tabulated1D:
 
 
 class Tabulated2D:
+    """
+    Tabulated2D: Metadata for two-dimensional tabulated functions.
+    
+    This class stores interpolation information for 2D functions in ENDF-6 format (TAB2 records).
+    It only stores the interpolation metadata; actual 2D data is stored separately.
+    """
     def __init__(self, breakpoints, interpolation):
+        # Store interpolation breakpoints (where interpolation scheme changes)
         self.breakpoints = np.asarray(list(breakpoints), dtype=int)
+        # Store interpolation schemes for each region
         self.interpolation = np.asarray(list(interpolation), dtype=int)
 
 
 class ENDFNumericDecayParser:
-    """Parser for MF=8 MT=457."""
+    """
+    ENDFNumericDecayParser: Core parser for ENDF-6 radioactive decay data (MF=8, MT=457).
     
+    This parser reads ENDF-6 format radioactive decay data files and extracts:
+    - Half-lives and Q-values
+    - Decay modes (β+, β-, EC, α, etc.) and branching ratios
+    - Radiation spectra (gamma rays, beta particles, X-rays, Auger electrons)
+    - Discrete transition energies and intensities
+    - Mean radiation energies
+    
+    ENDF-6 Format Structure:
+    - Each line is 80 characters fixed-width
+    - Columns 1-66: Data fields
+    - Columns 67-70: MAT (material identifier)
+    - Columns 71-72: MF (file number, 8 for radioactive decay)
+    - Columns 73-75: MT (section number, 457 for decay data)
+    - Columns 76-80: Line sequence number
+    
+    MF=8 MT=457 Record Structure:
+    1. HEAD record: ZA, AWR, LIS (isomeric state), LISO, NST (stability), NSP (# spectra)
+    2. LIST record: Half-life with uncertainty
+    3. LIST record: Decay modes with Q-values and branching ratios
+    4. Multiple LIST/TAB1 records: Radiation spectra for each particle type
+    """
+    
+    # Regular expression to parse ENDF's "E-less" floating point format
+    # ENDF uses format like "1.23456+7" instead of "1.23456E+7"
     ENDF_FLOAT_RE = re.compile(r"([\s\-\+]?\d*\.\d+)([\+\-]) ?(\d+)")
     
     def __init__(self, text: Optional[str] = None):
-        self._lines: List[str] = []
-        self._pos: int = 0
+        """
+        Initialize the parser.
+        
+        Args:
+            text: Optional ENDF text data to load immediately
+        """
+        self._lines: List[str] = []  # Storage for all lines from ENDF file
+        self._pos: int = 0           # Current reading position (line number)
         if text is not None:
             self.load_text(text)
     
@@ -444,8 +483,13 @@ def verify_all_levels(all_results):
         for state in states_sorted:
             lis = state["LIS"]
             mat = state.get("MAT", "?")
-            halflife_s = state["T1/2"][0]
-            halflife_str = format_halflife(halflife_s)
+            
+            # Handle half-life (may be missing for stable nuclides or parsing errors)
+            if "T1/2" in state and state["T1/2"]:
+                halflife_s = state["T1/2"][0]
+                halflife_str = format_halflife(halflife_s)
+            else:
+                halflife_str = "STABLE or unknown"
             
             # Determine state name
             if lis == 0:
@@ -516,7 +560,8 @@ def format_and_print_combined_table(all_results):
             lis = result.get("LIS", 0)
             liso = result.get("LISO", 0)
             mat = result.get("MAT", 0)
-            halflife_s = result["T1/2"][0]
+            # Handle half-life (may be missing for stable nuclides)
+            halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
             
             level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
             
@@ -578,7 +623,8 @@ def format_and_print_combined_table(all_results):
         for result in nuclides[za]:
             lis = result.get("LIS", 0)
             mat = result.get("MAT", 0)
-            halflife_s = result["T1/2"][0]
+            # Handle half-life (may be missing for stable nuclides)
+            halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
             
             if not result.get("modes"):
                 continue
@@ -625,7 +671,8 @@ def format_and_print_combined_table(all_results):
         for result in nuclides[za]:
             lis = result.get("LIS", 0)
             mat = result.get("MAT", 0)
-            halflife_s = result["T1/2"][0]
+            # Handle half-life (may be missing for stable nuclides)
+            halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
             
             if result.get("modes"):
                 bplus_br_pct = extract_bplus_branching(result)
@@ -647,7 +694,8 @@ def format_and_print_table(parsed_data):
     za = parsed_data["ZA"]
     z = za // 1000
     a = za % 1000
-    halflife_s = parsed_data["T1/2"][0]
+    # Handle half-life (may be missing for stable nuclides)
+    halflife_s = parsed_data.get("T1/2", [0, 0])[0] if "T1/2" in parsed_data else 0
     
     # Decay mode info
     mode = parsed_data["modes"][0]
@@ -965,28 +1013,33 @@ if __name__ == "__main__":
         # Redirect output to file
         original_stdout = sys.stdout
         
-        with open(output_file, 'w', encoding='utf-8') as f:
-            sys.stdout = f
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                sys.stdout = f
+                
+                print(f"Reading ENDF data from: {input_file}")
+                if verbose:
+                    print("(Verbose mode: showing all detailed transitions)")
+                print(f"Found {len(all_results)} decay state(s)")
+                print()
+                
+                # Format and print all results
+                format_and_print_combined_table(all_results)
+                
+                if verbose:
+                    for i, result in enumerate(all_results):
+                        print()
+                        print("="*130)
+                        print(f"DETAILED DATA FOR STATE {i} (LIS={result.get('LIS', 0)})")
+                        print("="*130)
+                        print_detailed_data(result)
             
-            print(f"Reading ENDF data from: {input_file}")
-            if verbose:
-                print("(Verbose mode: showing all detailed transitions)")
-            print(f"Found {len(all_results)} decay state(s)")
-            print()
-            
-            # Format and print all results
-            format_and_print_combined_table(all_results)
-            
-            if verbose:
-                for i, result in enumerate(all_results):
-                    print()
-                    print("="*130)
-                    print(f"DETAILED DATA FOR STATE {i} (LIS={result.get('LIS', 0)})")
-                    print("="*130)
-                    print_detailed_data(result)
-        
-        # Restore stdout
-        sys.stdout = original_stdout
+            # Restore stdout
+            sys.stdout = original_stdout
+        except Exception as e:
+            # Make sure to restore stdout before printing error
+            sys.stdout = original_stdout
+            raise
         
         # Print confirmation to console
         print(f"✓ Successfully parsed: {input_file}")
@@ -1017,8 +1070,9 @@ if __name__ == "__main__":
             a = za % 1000
             lis = result.get("LIS", 0)
             mat = result.get("MAT", 0)
-            halflife_s = result["T1/2"][0]
-            element = ELEMENT_SYMBOLS.get(z, f'Z{z}')
+            # Handle half-life (may be missing for stable nuclides)
+            halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
+            element = ATOMIC_SYMBOL.get(z, f'Z{z}')
             
             level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
             
