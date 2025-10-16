@@ -806,12 +806,26 @@ if __name__ == "__main__":
         
         # Parse each section
         for start_pos, mat_num in section_info:
-            parser = ENDFNumericDecayParser()
-            parser.load_file(input_file)
-            parser._pos = start_pos
-            result = parser._parse_mf8_mt457()
-            result["MAT"] = mat_num  # Store MAT number with result
-            all_results.append(result)
+            try:
+                parser = ENDFNumericDecayParser()
+                parser.load_file(input_file)
+                parser._pos = start_pos
+                result = parser._parse_mf8_mt457()
+                result["MAT"] = mat_num  # Store MAT number with result
+                all_results.append(result)
+                print(f"✓ Successfully parsed MAT={mat_num}, LIS={result['LIS']}")
+            except (EOFError, IndexError, ValueError) as e:
+                print(f"⚠ WARNING: Skipped MAT={mat_num} (incomplete data): {str(e)[:60]}")
+                continue
+            except Exception as e:
+                print(f"✗ ERROR: Failed to parse MAT={mat_num}: {str(e)[:60]}")
+                continue
+        
+        # Check if we have any results
+        if not all_results:
+            print("ERROR: No decay data could be parsed from the file.")
+            print("The file may contain incomplete or corrupted ENDF records.")
+            exit(1)
         
         # Redirect output to file
         original_stdout = sys.stdout
