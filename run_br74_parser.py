@@ -246,65 +246,81 @@ class ENDFNumericDecayParser:
                 data["modes"].append({"RTYP": rtyp, "RFS": rfs, "Q": q, "BR": br})
         
         data["spectra"] = []
-        for _ in range(nsp):
-            items, values = self._get_list_record()
-            _, styp, lcon, lcov, _, ner = items
-            spectrum = {"STYP": styp, "LCON": lcon, "LCOV": lcov, "NER": ner}
-            spectrum["FD"] = tuple(values[0:2].astype(float))
-            spectrum["ER_AV"] = tuple(values[2:4].astype(float))
-            spectrum["FC"] = tuple(values[4:6].astype(float))
-            
-            if lcon != 1:
-                spectrum["discrete"] = []
-                for _ in range(ner):
+        for spectrum_idx in range(nsp):
+            try:
+                items, values = self._get_list_record()
+                _, styp, lcon, lcov, _, ner = items
+                spectrum = {"STYP": styp, "LCON": lcon, "LCOV": lcov, "NER": ner}
+                spectrum["FD"] = tuple(values[0:2].astype(float))
+                spectrum["ER_AV"] = tuple(values[2:4].astype(float))
+                spectrum["FC"] = tuple(values[4:6].astype(float))
+                
+                if lcon != 1:
+                    spectrum["discrete"] = []
+                    # Try to read NER records, stop early if we hit EOF
+                    for record_idx in range(ner):
+                        try:
+                            items_d, values_d = self._get_list_record()
+                            discrete = {}
+                            discrete["ER"] = tuple(items_d[0:2])
+                            
+                            # Handle incomplete data gracefully
+                            if len(values_d) == 0:
+                                continue
+                            
+                            discrete["RTYP"] = float(values_d[0]) if len(values_d) > 0 else 0.0
+                            discrete["TYPE"] = float(values_d[1]) if len(values_d) > 1 else 0.0
+                            
+                            if styp == 0:  # Gamma spectrum
+                                if len(values_d) >= 12:
+                                    discrete["RI"] = tuple(values_d[2:4].astype(float))
+                                    discrete["RIS"] = tuple(values_d[4:6].astype(float))
+                                    discrete["RICC"] = tuple(values_d[6:8].astype(float))
+                                    discrete["RICK"] = tuple(values_d[8:10].astype(float))
+                                    discrete["RICL"] = tuple(values_d[10:12].astype(float))
+                            elif styp == 2:  # Beta+ spectrum
+                                if len(values_d) >= 6:
+                                    discrete["INTENSITY"] = tuple(values_d[4:6].astype(float))
+                            
+                            discrete["_raw_values"] = values_d
+                            spectrum["discrete"].append(discrete)
+                        except (IndexError, ValueError, EOFError) as e:
+                            # EOF or error - stop trying to read more discrete records
+                            break
+                
+                # Try to read optional continuous spectrum
+                if lcon != 0:
                     try:
-                        items_d, values_d = self._get_list_record()
-                        discrete = {}
-                        discrete["ER"] = tuple(items_d[0:2])
-                        
-                        # Handle incomplete data gracefully
-                        if len(values_d) == 0:
-                            continue
-                        
-                        discrete["RTYP"] = float(values_d[0]) if len(values_d) > 0 else 0.0
-                        discrete["TYPE"] = float(values_d[1]) if len(values_d) > 1 else 0.0
-                        
-                        if styp == 0:  # Gamma spectrum
-                            if len(values_d) >= 12:
-                                discrete["RI"] = tuple(values_d[2:4].astype(float))
-                                discrete["RIS"] = tuple(values_d[4:6].astype(float))
-                                discrete["RICC"] = tuple(values_d[6:8].astype(float))
-                                discrete["RICK"] = tuple(values_d[8:10].astype(float))
-                                discrete["RICL"] = tuple(values_d[10:12].astype(float))
-                        elif styp == 2:  # Beta+ spectrum
-                            if len(values_d) >= 6:
-                                discrete["INTENSITY"] = tuple(values_d[4:6].astype(float))
-                        
-                        discrete["_raw_values"] = values_d
-                        spectrum["discrete"].append(discrete)
-                    except (IndexError, ValueError, EOFError) as e:
-                        # Skip incomplete or malformed records
-                        continue
-            
-            if lcon != 0:
-                params, rp = self._get_tab1_record()
-                spectrum["continuous"] = {"RTYP": params[0], "RP": rp}
-            
-            if lcov not in (0, 2) and lcon != 0:
-                items_c, values_c = self._get_list_record()
-                covar_cont = {"LB": items_c[3]}
-                covar_cont["Ek"] = np.array(values_c[::2], dtype=float)
-                covar_cont["Fk"] = np.array(values_c[1::2], dtype=float)
-                spectrum["continuous_covariance"] = covar_cont
-            
-            if lcov not in (0, 1):
-                (__, ____, ls, lb, ne, nerp), values_dc = self._get_list_record()
-                covar_disc = {"LS": ls, "LB": lb, "NE": ne, "NERP": nerp}
-                covar_disc["Ek"] = np.array(values_dc[:nerp], dtype=float)
-                covar_disc["Fkk"] = np.array(values_dc[nerp:], dtype=float)
-                spectrum["discrete_covariance"] = covar_disc
-            
-            data["spectra"].append(spectrum)
+                        params, rp = self._get_tab1_record()
+                        spectrum["continuous"] = {"RTYP": params[0], "RP": rp}
+                    except (EOFError, IndexError, ValueError):
+                        pass  # Skip if not available
+                
+                # Try to read optional covariance data
+                if lcov not in (0, 2) and lcon != 0:
+                    try:
+                        items_c, values_c = self._get_list_record()
+                        covar_cont = {"LB": items_c[3]}
+                        covar_cont["Ek"] = np.array(values_c[::2], dtype=float)
+                        covar_cont["Fk"] = np.array(values_c[1::2], dtype=float)
+                        spectrum["continuous_covariance"] = covar_cont
+                    except (EOFError, IndexError, ValueError):
+                        pass
+                
+                if lcov not in (0, 1):
+                    try:
+                        (__, ____, ls, lb, ne, nerp), values_dc = self._get_list_record()
+                        covar_disc = {"LS": ls, "LB": lb, "NE": ne, "NERP": nerp}
+                        covar_disc["Ek"] = np.array(values_dc[:nerp], dtype=float)
+                        covar_disc["Fkk"] = np.array(values_dc[nerp:], dtype=float)
+                        spectrum["discrete_covariance"] = covar_disc
+                    except (EOFError, IndexError, ValueError):
+                        pass
+                
+                data["spectra"].append(spectrum)
+            except (EOFError, IndexError, ValueError) as e:
+                # If we can't even start reading this spectrum, we're done
+                break
         
         return data
 
