@@ -835,14 +835,116 @@ def format_and_print_table(parsed_data):
     print()
 
 
+def print_detailed_data(parsed_data):
+    """Print all detailed transition data."""
+    print()
+    print("="*130)
+    print("DETAILED TRANSITION DATA")
+    print("="*130)
+    print()
+    
+    # Gamma rays
+    for spec in parsed_data["spectra"]:
+        if spec["STYP"] == 0 and "discrete" in spec:  # Gamma rays
+            print(f"GAMMA RAY TRANSITIONS (Total: {len(spec['discrete'])})")
+            print("-"*130)
+            print(f"{'#':>4s} {'Energy (keV)':>15s} {'Uncertainty':>15s} {'Intensity':>15s} {'Int. Unc.':>15s} {'ICC Total':>15s} {'ICC K':>15s} {'ICC L':>15s}")
+            print("-"*130)
+            for i, disc in enumerate(spec["discrete"], 1):
+                energy_kev = disc["ER"][0] / 1000.0
+                energy_unc = disc["ER"][1] / 1000.0
+                if "RI" in disc:
+                    intensity = disc["RI"][0]
+                    int_unc = disc["RI"][1]
+                    icc = disc.get("RICC", (0, 0))[0]
+                    ick = disc.get("RICK", (0, 0))[0]
+                    icl = disc.get("RICL", (0, 0))[0]
+                    print(f"{i:>4d} {energy_kev:>15.4f} {energy_unc:>15.4f} {intensity:>15.6f} {int_unc:>15.6f} {icc:>15.6f} {ick:>15.6f} {icl:>15.6f}")
+            print()
+    
+    # Beta+ transitions
+    for spec in parsed_data["spectra"]:
+        if spec["STYP"] == 2 and "discrete" in spec:  # Beta+
+            print(f"BETA+ TRANSITIONS (Total: {len(spec['discrete'])})")
+            print("-"*130)
+            print(f"{'#':>4s} {'Endpoint (keV)':>18s} {'Uncertainty':>15s} {'Intensity (%)':>18s} {'Int. Unc.':>15s} {'TYPE':>10s}")
+            print("-"*130)
+            for i, disc in enumerate(spec["discrete"], 1):
+                energy_kev = disc["ER"][0] / 1000.0
+                energy_unc = disc["ER"][1] / 1000.0
+                trans_type = disc.get("TYPE", 0)
+                if "INTENSITY" in disc:
+                    intensity = disc["INTENSITY"][0]
+                    int_unc = disc["INTENSITY"][1]
+                    print(f"{i:>4d} {energy_kev:>18.4f} {energy_unc:>15.4f} {intensity:>18.4f} {int_unc:>15.4f} {trans_type:>10.1f}")
+            print()
+    
+    # X-rays
+    for spec in parsed_data["spectra"]:
+        if spec["STYP"] == 8 and "discrete" in spec:  # X-rays
+            print(f"X-RAY TRANSITIONS (Total: {len(spec['discrete'])})")
+            print("-"*130)
+            print(f"{'#':>4s} {'Energy (keV)':>15s} {'Uncertainty':>15s} {'RTYP':>10s} {'TYPE':>10s}")
+            print("-"*130)
+            for i, disc in enumerate(spec["discrete"], 1):
+                energy_kev = disc["ER"][0] / 1000.0
+                energy_unc = disc["ER"][1] / 1000.0
+                rtyp = disc.get("RTYP", 0)
+                trans_type = disc.get("TYPE", 0)
+                print(f"{i:>4d} {energy_kev:>15.4f} {energy_unc:>15.4f} {rtyp:>10.1f} {trans_type:>10.1f}")
+            print()
+    
+    # Auger electrons
+    for spec in parsed_data["spectra"]:
+        if spec["STYP"] == 9 and "discrete" in spec:  # Auger
+            print(f"AUGER ELECTRON TRANSITIONS (Total: {len(spec['discrete'])})")
+            print("-"*130)
+            print(f"{'#':>4s} {'Energy (keV)':>15s} {'Uncertainty':>15s} {'RTYP':>10s} {'TYPE':>10s}")
+            print("-"*130)
+            for i, disc in enumerate(spec["discrete"], 1):
+                energy_kev = disc["ER"][0] / 1000.0
+                energy_unc = disc["ER"][1] / 1000.0
+                rtyp = disc.get("RTYP", 0)
+                trans_type = disc.get("TYPE", 0)
+                print(f"{i:>4d} {energy_kev:>15.4f} {energy_unc:>15.4f} {rtyp:>10.1f} {trans_type:>10.1f}")
+            print()
+    
+    # Additional metadata
+    print("="*130)
+    print("ADDITIONAL METADATA")
+    print("="*130)
+    print(f"Spin (SPI): {parsed_data.get('SPI', 'N/A')}")
+    print(f"Parity (PAR): {parsed_data.get('PAR', 'N/A')}")
+    print(f"Isomeric state (LIS): {parsed_data.get('LIS', 0)}")
+    print(f"Number of excited states (NC): {parsed_data.get('NC', 0)}")
+    if parsed_data.get('Ex'):
+        print(f"Excited state energies:")
+        for i, (ex_val, ex_unc) in enumerate(parsed_data['Ex'], 1):
+            print(f"  Ex[{i}]: {ex_val/1000.0:.4f} ± {ex_unc/1000.0:.4f} keV")
+    print("="*130)
+    print()
+
+
 if __name__ == "__main__":
     import sys
     
+    # Check for verbose/full flag
+    verbose = False
+    file_arg = None
+    
+    for arg in sys.argv[1:]:
+        if arg in ['--verbose', '--full', '-v', '--all']:
+            verbose = True
+        elif not arg.startswith('-'):
+            file_arg = arg
+    
     # Check if file argument provided
-    if len(sys.argv) > 1:
+    if file_arg:
         # Read from file
-        input_file = sys.argv[1]
+        input_file = file_arg
         print(f"Reading ENDF data from: {input_file}")
+        if verbose:
+            print("(Verbose mode: showing all detailed transitions)")
         print()
         
         try:
@@ -857,10 +959,13 @@ if __name__ == "__main__":
             result = parser._parse_mf8_mt457()
             format_and_print_table(result)
             
+            if verbose:
+                print_detailed_data(result)
+            
         except FileNotFoundError:
             print(f"ERROR: File not found: {input_file}")
             print()
-            print("Usage: python3 run_br74_parser.py <endf_file.txt>")
+            print("Usage: python3 run_br74_parser.py [--verbose] <endf_file.txt>")
             exit(1)
         except Exception as e:
             print(f"ERROR: Failed to parse file: {e}")
@@ -870,7 +975,7 @@ if __name__ == "__main__":
     else:
         # Use embedded example data
         print("No file specified, using embedded Br-74 example data")
-        print("Usage: python3 run_br74_parser.py <endf_file.txt>")
+        print("Usage: python3 run_br74_parser.py [--verbose] <endf_file.txt>")
         print()
         
         parser = ENDFNumericDecayParser()
@@ -882,3 +987,6 @@ if __name__ == "__main__":
         
         result = parser._parse_mf8_mt457()
         format_and_print_table(result)
+        
+        if verbose:
+            print_detailed_data(result)
