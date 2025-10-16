@@ -815,8 +815,8 @@ def format_and_print_combined_table(all_results):
                 mean_beta = 0.0
                 mean_gamma = 0.0
             
-            # Print single row for this decay level
-            print(f"{z:>3d}  {a:>4d}  {element:>4s}  {lis:>3d}  {nuclide_name:>8s}  {halflife_str:>18s}  {q_kev:>12.2f}  {bplus_br_pct:>10.2f}  {ec_br_pct:>10.2f}  {mean_alpha:>10.2f}  {mean_beta:>10.2f}  {mean_gamma:>10.2f}  {mat:>5d}")
+            # Print single row for this decay level (scientific notation for energies/branching)
+            print(f"{z:>3d}  {a:>4d}  {element:>4s}  {lis:>3d}  {nuclide_name:>8s}  {halflife_str:>18s}  {q_kev:>12.4e}  {bplus_br_pct:>10.4e}  {ec_br_pct:>10.4e}  {mean_alpha:>10.4e}  {mean_beta:>10.4e}  {mean_gamma:>10.4e}  {mat:>5d}")
     
     print("-"*200)
     print()
@@ -839,8 +839,9 @@ def format_and_print_combined_table(all_results):
                 ec_br_pct = total_br_pct - bplus_br_pct
                 
                 level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
-                print(f"  • {level_name} (MAT={mat}, level {lis}) undergoes EC/β+ decay with T½ = {halflife_s/60.0:.2f} minutes")
-                print(f"    - β+ emission: {bplus_br_pct:.2f}% | EC: {ec_br_pct:.2f}%")
+                halflife_str = format_halflife(halflife_s)
+                print(f"  • {level_name} (MAT={mat}, level {lis}) undergoes EC/β+ decay with T½ = {halflife_str}")
+                print(f"    - β+ emission: {bplus_br_pct:.4e}% | EC: {ec_br_pct:.4e}%")
     print("="*140)
     print()
 

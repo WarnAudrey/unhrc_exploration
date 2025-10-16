@@ -1,0 +1,82 @@
+═══════════════════════════════════════════════════════════════════════════════
+✅ SCIENTIFIC NOTATION FORMAT - READY!
+═══════════════════════════════════════════════════════════════════════════════
+
+All numerical values in the table are now displayed in scientific notation!
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 NEW TABLE FORMAT (With Scientific Notation)
+═══════════════════════════════════════════════════════════════════════════════
+
+RADIOACTIVE DECAY DATA TABLE - Clean Format
+
+  Z     A  Element  LIS   Nuclide           Half-life       Q-value   B+ Branch   EC Branch      Mean α      Mean β      Mean γ    MAT
+                          Name                             (keV)         (%)         (%)       (keV)       (keV)       (keV)       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 35    74    Br    0     Br-74       25.40 minutes    6.9070e+03  9.1170e+01  8.8300e+00  0.0000e+00  1.0526e+03  3.4234e+03    837
+ 35    74    Br    1    Br-74m       46.00 minutes    6.9208e+03  0.0000e+00  1.0000e+02  0.0000e+00  0.0000e+00  2.9012e+03    838
+
+═══════════════════════════════════════════════════════════════════════════════
+🔢 VALUES IN SCIENTIFIC NOTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+All energy and branching values now use format: X.XXXXe±YY
+
+Examples from the table above:
+  • Q-value:     6.9070e+03 keV  = 6907.0 keV
+  • β+ Branch:   9.1170e+01 %    = 91.17%
+  • EC Branch:   8.8300e+00 %    = 8.83%
+  • Mean β:      1.0526e+03 keV  = 1052.6 keV
+  • Mean γ:      3.4234e+03 keV  = 3423.4 keV
+  • Zero value:  0.0000e+00      = 0.0
+
+Benefits:
+  ✓ Consistent format for all values
+  ✓ Easy to import into scientific software
+  ✓ Clear exponent notation
+  ✓ Handles wide range of values (tiny to huge)
+  ✓ 4 significant figures maintained
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 COMPLETE COLUMN LIST
+═══════════════════════════════════════════════════════════════════════════════
+
+NOT in scientific notation (identifiers):
+  • Z          - Atomic number (integer)
+  • A          - Mass number (integer)
+  • Element    - Element symbol (text)
+  • LIS        - Isomeric state level (integer)
+  • Nuclide    - Nuclide name (text, e.g., Br-74m)
+  • Half-life  - Human-readable (e.g., "25.40 minutes")
+  • MAT        - Material number (integer)
+
+IN scientific notation (measurements):
+  • Q-value    - Decay energy in keV (e.g., 6.9070e+03)
+  • B+ Branch  - Beta-plus branching % (e.g., 9.1170e+01)
+  • EC Branch  - Electron capture branching % (e.g., 8.8300e+00)
+  • Mean α     - Mean alpha energy in keV (e.g., 0.0000e+00)
+  • Mean β     - Mean beta energy in keV (e.g., 1.0526e+03)
+  • Mean γ     - Mean gamma energy in keV (e.g., 3.4234e+03)
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 RUN IT
+═══════════════════════════════════════════════════════════════════════════════
+
+Generate clean table with scientific notation for JEFF-4.0:
+
+python3 JEFF_ENDF_parser.py /Users/audreywarn/fluka-db-audrey/data_input/endf/Radioactive_Decay_Data_JEFF-40.txt -o JEFF40_table.txt
+
+This will create a table with ~3,800 rows, all values in scientific notation!
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ PERFECT FOR
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Importing into Excel/CSV
+✓ Reading into Python/MATLAB/R
+✓ Database imports
+✓ Scientific publications
+✓ Consistent formatting across all magnitudes
+✓ Easy parsing with regex/string processing
+
+═══════════════════════════════════════════════════════════════════════════════
