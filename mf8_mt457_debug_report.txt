@@ -1,0 +1,8 @@
+===============================================================================
+ENDF Radioactive Decay Data for Br-74 (DEBUG MODE)
+===============================================================================
+
+                                                    Q (keV)     BR (%) Half-life (s) Mean_alpha_E (keV) Mean_beta_E (keV) Mean_gamma_E (keV)
+A  Z  parent_level decay_mode daughter_level                                 
+74 35 0            B+         0                6907.0000 keV  91.1700 %  1.5240e+03 s            0.0000 keV         1052.5700 keV          3423.3900 keV
+74 35              EC         0                6907.0000 keV   8.8300 %  1.5240e+03 s            0.0000 keV         1052.5700 keV          3423.3900 keV
