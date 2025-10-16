@@ -23,6 +23,23 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 
+# Element symbols by atomic number
+ATOMIC_SYMBOL = {
+    0: 'n', 1: 'H', 2: 'He', 3: 'Li', 4: 'Be', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 10: 'Ne',
+    11: 'Na', 12: 'Mg', 13: 'Al', 14: 'Si', 15: 'P', 16: 'S', 17: 'Cl', 18: 'Ar', 19: 'K', 20: 'Ca',
+    21: 'Sc', 22: 'Ti', 23: 'V', 24: 'Cr', 25: 'Mn', 26: 'Fe', 27: 'Co', 28: 'Ni', 29: 'Cu', 30: 'Zn',
+    31: 'Ga', 32: 'Ge', 33: 'As', 34: 'Se', 35: 'Br', 36: 'Kr', 37: 'Rb', 38: 'Sr', 39: 'Y', 40: 'Zr',
+    41: 'Nb', 42: 'Mo', 43: 'Tc', 44: 'Ru', 45: 'Rh', 46: 'Pd', 47: 'Ag', 48: 'Cd', 49: 'In', 50: 'Sn',
+    51: 'Sb', 52: 'Te', 53: 'I', 54: 'Xe', 55: 'Cs', 56: 'Ba', 57: 'La', 58: 'Ce', 59: 'Pr', 60: 'Nd',
+    61: 'Pm', 62: 'Sm', 63: 'Eu', 64: 'Gd', 65: 'Tb', 66: 'Dy', 67: 'Ho', 68: 'Er', 69: 'Tm', 70: 'Yb',
+    71: 'Lu', 72: 'Hf', 73: 'Ta', 74: 'W', 75: 'Re', 76: 'Os', 77: 'Ir', 78: 'Pt', 79: 'Au', 80: 'Hg',
+    81: 'Tl', 82: 'Pb', 83: 'Bi', 84: 'Po', 85: 'At', 86: 'Rn', 87: 'Fr', 88: 'Ra', 89: 'Ac', 90: 'Th',
+    91: 'Pa', 92: 'U', 93: 'Np', 94: 'Pu', 95: 'Am', 96: 'Cm', 97: 'Bk', 98: 'Cf', 99: 'Es', 100: 'Fm',
+    101: 'Md', 102: 'No', 103: 'Lr', 104: 'Rf', 105: 'Db', 106: 'Sg', 107: 'Bh', 108: 'Hs', 109: 'Mt',
+    110: 'Ds', 111: 'Rg', 112: 'Cn', 113: 'Nh', 114: 'Fl', 115: 'Mc', 116: 'Lv', 117: 'Ts', 118: 'Og'
+}
+
+
 class Tabulated1D:
     """Tabulated function with FIXED interpolation."""
     def __init__(self, x, y, breakpoints=None, interpolation=None):
@@ -344,12 +361,86 @@ def extract_bplus_branching(parsed_data):
     return 0.0
 
 
+def format_halflife(halflife_seconds):
+    """Format half-life in human-readable units."""
+    if halflife_seconds < 60:
+        return f"{halflife_seconds:.2f} seconds"
+    elif halflife_seconds < 3600:
+        return f"{halflife_seconds/60:.2f} minutes"
+    elif halflife_seconds < 86400:
+        return f"{halflife_seconds/3600:.2f} hours"
+    elif halflife_seconds < 31536000:
+        return f"{halflife_seconds/86400:.2f} days"
+    else:
+        return f"{halflife_seconds/31536000:.2f} years"
+
+
+def verify_all_levels(all_results):
+    """Verify and report on all decay levels found for each nuclide."""
+    print("\n" + "="*140)
+    print("LEVEL COMPLETENESS CHECK")
+    print("="*140)
+    
+    # Group by nuclide
+    nuclides = {}
+    for result in all_results:
+        za = result["ZA"]
+        if za not in nuclides:
+            nuclides[za] = []
+        nuclides[za].append(result)
+    
+    for za, states in sorted(nuclides.items()):
+        Z = za // 1000
+        A = za % 1000
+        element = ATOMIC_SYMBOL.get(Z, f"Z{Z}")
+        
+        # Sort by LIS
+        states_sorted = sorted(states, key=lambda x: x["LIS"])
+        lis_values = [s["LIS"] for s in states_sorted]
+        mat_values = [s.get("MAT", "?") for s in states_sorted]
+        
+        print(f"\n{element}-{A} (ZA={za}):")
+        print(f"  Found {len(states)} decay level(s): LIS = {lis_values}")
+        print(f"  Corresponding MAT numbers: {mat_values}")
+        
+        # Check for gaps in LIS sequence
+        expected_lis = list(range(len(states)))
+        if lis_values != expected_lis:
+            missing = set(expected_lis) - set(lis_values)
+            if missing:
+                print(f"  ⚠ WARNING: Possible missing levels - expected LIS values {expected_lis}, found {lis_values}")
+                print(f"            Missing LIS: {sorted(missing)}")
+        else:
+            print(f"  ✓ Level sequence is complete (LIS 0 through {len(states)-1})")
+        
+        # Show details for each level
+        for state in states_sorted:
+            lis = state["LIS"]
+            mat = state.get("MAT", "?")
+            halflife_s = state["T1/2"][0]
+            halflife_str = format_halflife(halflife_s)
+            
+            # Determine state name
+            if lis == 0:
+                state_name = f"{element}-{A}"
+            else:
+                state_name = f"{element}-{A}m{lis if lis > 1 else ''}"
+            
+            print(f"    Level {lis} (MAT={mat}): {state_name}, T½ = {halflife_str}")
+    
+    print("\n" + "="*140)
+    print()
+
+
 def format_and_print_combined_table(all_results):
     """Generate and print combined formatted table for all decay levels and nuclides."""
     
     if not all_results:
         print("No data to display")
         return
+    
+    # First verify all levels
+    verify_all_levels(all_results)
     
     # Group results by nuclide (ZA)
     nuclides = {}
