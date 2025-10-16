@@ -1050,18 +1050,42 @@ def format_and_print_combined_table(all_results):
     ELEMENT_SYMBOLS = ATOMIC_SYMBOL
     
     print()
-    print("="*240)
-    print("SUMMARY TABLE - Mean Energies and Branching Ratios")
-    print("="*240)
+    print("="*400)
+    print("COMPREHENSIVE SUMMARY TABLE - ALL ENDF FIELDS WITH UNCERTAINTIES")
+    print("="*400)
     print()
     print(f"Total nuclides: {len(nuclides)}")
     print(f"Total decay levels: {len(all_results)}")
     print()
+    print("ENDF Field Definitions:")
+    print("  LIS  = Isomeric state level (0=ground, 1=1st excited, 2=2nd excited, etc.)")
+    print("  LISO = Isomeric state flag (0=ground state, 1=excited state)")
+    print("  NST  = Stability flag (0=radioactive, 1=stable)")
+    print("  AWR  = Atomic Weight Ratio (mass relative to neutron)")
+    print("  RFS  = Daughter isomeric state flag")
+    print("  NDK  = Number of decay modes for this nuclide")
+    print("  NSP  = Number of radiation spectra (gamma, beta, X-ray, etc.)")
+    print("  NC   = Number of daughter excitation states")
+    print()
+    print("Decay Type Codes:")
+    print("  γ = Gamma emission (isomeric transition)")
+    print("  β- = Beta- decay (neutron → proton + electron + antineutrino)")
+    print("  EC/β+ = Electron Capture / Beta+ decay (proton → neutron + positron + neutrino)")
+    print("  IT = Internal Transition")
+    print("  α = Alpha decay")
+    print("  n = Neutron emission")
+    print("  SF = Spontaneous Fission")
+    print("  p = Proton emission")
+    print()
+    print("All energies in keV, uncertainties provided for all measured quantities")
+    print()
     
-    # Print comprehensive table header
-    print(f"{'Z':>3s}  {'A':>4s}  {'Elem':>4s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Spin':>6s}  {'Parity':>6s}  {'Parent Ex':>12s}  {'Half-life':>18s}  {'Decay':>6s}  {'Q-value':>12s}  {'Daughter':>8s}  {'RFS':>3s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
-    print(f"{'':>3s}  {'':>4s}  {'':>4s}  {'':>3s}  {'Name':>8s}  {'':>6s}  {'':>6s}  {'(keV)':>12s}  {'':>18s}  {'Type':>6s}  {'(keV)':>12s}  {'Nuclide':>8s}  {'':>3s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
-    print("-"*240)
+    # Print comprehensive table header with ALL fields
+    header1 = f"{'Z':>3s}  {'A':>4s}  {'Elem':>4s}  {'LIS':>3s}  {'LISO':>4s}  {'NST':>3s}  {'Nuclide':>8s}  {'AWR':>12s}  {'Spin':>8s}  {'Parity':>8s}  {'Ex (keV)':>12s}  {'±Ex':>12s}  {'Half-life':>18s}  {'±T1/2':>12s}  {'Decay':>8s}  {'Q-value':>12s}  {'±Q':>12s}  {'Daughter':>10s}  {'RFS':>3s}  {'BR Total':>12s}  {'±BR':>12s}  {'B+':>12s}  {'EC':>12s}  {'NDK':>3s}  {'NSP':>3s}  {'NC':>3s}  {'α Mean':>12s}  {'±α':>12s}  {'β Mean':>12s}  {'±β':>12s}  {'γ Mean':>12s}  {'±γ':>12s}  {'MAT':>5s}"
+    header2 = f"{'':>3s}  {'':>4s}  {'':>4s}  {'':>3s}  {'':>4s}  {'':>3s}  {'':>8s}  {'(rel)':>12s}  {'':>8s}  {'':>8s}  {'':>12s}  {'':>12s}  {'':>18s}  {'(sec)':>12s}  {'Type':>8s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>10s}  {'':>3s}  {'(%)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'':>3s}  {'':>3s}  {'':>3s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}"
+    print(header1)
+    print(header2)
+    print("-"*400)
     
     for za in sorted(nuclides.keys()):
         z = za // 1000
@@ -1070,17 +1094,30 @@ def format_and_print_combined_table(all_results):
         
         for result in nuclides[za]:
             lis = result.get("LIS", 0)
+            liso = result.get("LISO", 0)
+            nst = result.get("NST", 0)
             mat = result.get("MAT", 0)
+            awr = result.get("AWR", 0.0)
             
             spi = result.get("SPI", 0.0)
             par = result.get("PAR", 0.0)
             
+            # Parent excitation energy with uncertainty
             parent_ex_kev = 0.0
-            if "Ex" in result and len(result["Ex"]) > 0 and lis > 0:
+            parent_ex_unc = 0.0
+            if "Ex" in result and len(result["Ex"]) > 0:
                 parent_ex_kev = result["Ex"][0][0] / 1000.0 if result["Ex"][0][0] > 0 else 0.0
+                parent_ex_unc = result["Ex"][0][1] / 1000.0 if len(result["Ex"][0]) > 1 else 0.0
             
+            # Half-life with uncertainty
             halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
+            halflife_unc = result.get("T1/2", [0, 0])[1] if "T1/2" in result else 0
             halflife_str = format_halflife(halflife_s) if halflife_s > 0 else "STABLE"
+            
+            # Number of decay modes, spectra, excitation states
+            ndk = result.get("NDK", 0)
+            nsp = result.get("NSP", 0)
+            nc = result.get("NC", 0)
             
             if lis == 0:
                 nuclide_name = f"{element}-{a}"
@@ -1092,9 +1129,14 @@ def format_and_print_combined_table(all_results):
             if result.get("modes"):
                 mode = result["modes"][0]
                 q_kev = mode["Q"][0] / 1000.0
+                q_unc = mode["Q"][1] / 1000.0
                 rtyp = mode["RTYP"]
                 rfs = mode.get("RFS", 0.0)
-                total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
+                total_br = mode["BR"][0]
+                total_br_unc = mode["BR"][1]
+                # Convert to percentage if needed
+                total_br_pct = total_br * 100.0 if total_br <= 1.0 else total_br
+                total_br_unc_pct = total_br_unc * 100.0 if total_br <= 1.0 else total_br_unc
                 
                 decay_type_map = {
                     0.0: "γ",
@@ -1130,35 +1172,68 @@ def format_and_print_combined_table(all_results):
                 bplus_br_pct = extract_bplus_branching(result)
                 ec_br_pct = total_br_pct - bplus_br_pct
                 
+                # Mean energies with uncertainties
                 mean_alpha = 0.0
+                mean_alpha_unc = 0.0
                 mean_beta = 0.0
+                mean_beta_unc = 0.0
                 mean_gamma = 0.0
+                mean_gamma_unc = 0.0
                 
                 if "spectra" in result:
                     for spec in result["spectra"]:
                         styp = spec["STYP"]
                         er_av_kev = spec["ER_AV"][0] / 1000.0
+                        er_av_unc = spec["ER_AV"][1] / 1000.0
                         
                         if styp == 0:
                             mean_gamma = er_av_kev
+                            mean_gamma_unc = er_av_unc
                         elif styp == 2:
                             mean_beta = er_av_kev
+                            mean_beta_unc = er_av_unc
                         elif styp == 4:
                             mean_alpha = er_av_kev
+                            mean_alpha_unc = er_av_unc
             else:
                 decay_type = "STABLE"
                 daughter_name = "-"
                 rfs = 0.0
                 q_kev = 0.0
+                q_unc = 0.0
+                total_br_pct = 0.0
+                total_br_unc_pct = 0.0
                 bplus_br_pct = 0.0
                 ec_br_pct = 0.0
                 mean_alpha = 0.0
+                mean_alpha_unc = 0.0
                 mean_beta = 0.0
+                mean_beta_unc = 0.0
                 mean_gamma = 0.0
+                mean_gamma_unc = 0.0
             
-            print(f"{z:>3d}  {a:>4d}  {element:>4s}  {lis:>3d}  {nuclide_name:>8s}  {spi:>6.1f}  {par:>6.1f}  {parent_ex_kev:>12.4e}  {halflife_str:>18s}  {decay_type:>6s}  {q_kev:>12.4e}  {daughter_name:>8s}  {rfs:>3.0f}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {mean_alpha:>12.4e}  {mean_beta:>12.4e}  {mean_gamma:>12.4e}  {mat:>5d}")
+            # Print complete row with ALL fields and uncertainties
+            print(f"{z:>3d}  {a:>4d}  {element:>4s}  {lis:>3d}  {liso:>4d}  {nst:>3d}  {nuclide_name:>8s}  {awr:>12.4e}  {spi:>8.1f}  {par:>8.1f}  {parent_ex_kev:>12.4e}  {parent_ex_unc:>12.4e}  {halflife_str:>18s}  {halflife_unc:>12.4e}  {decay_type:>8s}  {q_kev:>12.4e}  {q_unc:>12.4e}  {daughter_name:>10s}  {rfs:>3.0f}  {total_br_pct:>12.4e}  {total_br_unc_pct:>12.4e}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {ndk:>3d}  {nsp:>3d}  {nc:>3d}  {mean_alpha:>12.4e}  {mean_alpha_unc:>12.4e}  {mean_beta:>12.4e}  {mean_beta_unc:>12.4e}  {mean_gamma:>12.4e}  {mean_gamma_unc:>12.4e}  {mat:>5d}")
     
-    print("-"*240)
+    print("-"*400)
+    print()
+    print(f"Column Key:")
+    print(f"  Z/A/Elem/LIS/LISO/NST = Basic identifiers")
+    print(f"  AWR = Atomic Weight Ratio (relative to neutron)")
+    print(f"  Spin/Parity = Nuclear quantum numbers")
+    print(f"  Ex = Parent excitation energy (keV) with uncertainty")
+    print(f"  Half-life = Decay half-life with uncertainty")
+    print(f"  Q-value = Decay energy (keV) with uncertainty")
+    print(f"  RFS = Daughter isomeric state flag")
+    print(f"  BR Total = Total branching ratio (%) with uncertainty")
+    print(f"  B+/EC = Beta+/Electron Capture split for EC/β+ decay")
+    print(f"  NDK = Number of decay modes")
+    print(f"  NSP = Number of radiation spectra")
+    print(f"  NC = Number of daughter excitation states")
+    print(f"  α/β/γ Mean = Mean radiation energies (keV) with uncertainties")
+    print(f"  MAT = ENDF material number")
+    print()
+    print("="*400)
     print()
 
 
