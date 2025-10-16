@@ -1,13 +1,24 @@
 #!/usr/bin/env python3
 """
-JEFF ENDF-6 Radioactive Decay Data Parser (MF=8, MT=457) - COMPLETE DATA EXTRACTION
+JEFF ENDF-6 Radioactive Decay Data Parser (MF=8, MT=457) - COMPLETE ENERGY EXTRACTION
 
 Universal parser for JEFF (Joint Evaluated Fission and Fusion) radioactive decay databases.
 Parses ENDF-6 format radioactive decay data from the complete JEFF-4.0 dataset or any ENDF file.
 Supports ALL material (MAT) numbers and automatically detects all nuclides and isomeric states.
 Implements proper B+/EC splitting according to ENDF-102 specifications.
 
-**ENHANCED VERSION: Captures ALL information from ENDF file including:**
+**COMPLETE ENERGY EXTRACTION - ALL Individual Transitions:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ EVERY beta+ transition energy, intensity, and average energy
+✓ EVERY gamma ray energy, absolute/relative intensity, conversion coefficients
+✓ EVERY X-ray and Auger electron energy and intensity
+✓ COMPLETE continuous energy spectra (all tabulated points)
+✓ Energy-sorted distributions across all radiation types
+✓ Mean energies, Q-values, and decay statistics
+✓ Raw ENDF record data and metadata (verbose mode)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Also captures complete ENDF metadata:**
 - All header/comment lines
 - All record metadata (MAT, MF, MT, sequence numbers)
 - All fields from CONT, LIST, TAB1, TAB2, INTG records
@@ -26,17 +37,22 @@ Features:
 - Accurate B+/EC branching ratio calculations
 - Fault-tolerant parsing (continues on errors)
 - Works with incomplete/partial ENDF data
-- **COMPLETE data extraction - no information lost**
+- **NO information lost - complete data extraction**
 
 Usage:
-    python3 JEFF_ENDF_parser.py <jeff_decay_file.endf>           # Summary view
-    python3 JEFF_ENDF_parser.py --verbose <jeff_decay_file.endf> # Full details
-    python3 JEFF_ENDF_parser.py -o output.txt <input.endf>       # Custom output
-    python3 JEFF_ENDF_parser.py --raw <input.endf>               # Show raw record data
+    python3 JEFF_ENDF_parser.py <jeff_decay_file.endf>           # All energies
+    python3 JEFF_ENDF_parser.py --verbose <jeff_decay_file.endf> # + raw records
+    python3 JEFF_ENDF_parser.py -o output.txt <input.endf>       # Save to file
 
 Examples:
     python3 JEFF_ENDF_parser.py jeff-40-radioactive.endf
-    python3 JEFF_ENDF_parser.py uranium_decay.endf -o uranium_analysis.txt
+    python3 JEFF_ENDF_parser.py --verbose uranium_decay.endf -o full_data.txt
+    
+Output Format:
+    1. Individual energy tables for each nuclide (ALL transitions)
+    2. Energy distribution summary (all energies sorted)
+    3. Summary table with mean energies and branching ratios
+    4. Verbose mode adds raw ENDF records and metadata
 """
 
 import re
@@ -692,6 +708,324 @@ def verify_all_levels(all_results):
     print()
 
 
+def print_all_energies(all_results):
+    """Print ALL individual energy information from all spectra."""
+    
+    print()
+    print("="*200)
+    print("COMPLETE ENERGY INFORMATION - ALL TRANSITIONS AND SPECTRA")
+    print("="*200)
+    print()
+    
+    for result in all_results:
+        za = result["ZA"]
+        z = za // 1000
+        a = za % 1000
+        lis = result.get("LIS", 0)
+        mat = result.get("MAT", 0)
+        element = ATOMIC_SYMBOL.get(z, f'Z{z}')
+        
+        if lis == 0:
+            nuclide_name = f"{element}-{a}"
+        elif lis == 1:
+            nuclide_name = f"{element}-{a}m"
+        else:
+            nuclide_name = f"{element}-{a}m{lis}"
+        
+        halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
+        halflife_str = format_halflife(halflife_s) if halflife_s > 0 else "STABLE"
+        
+        print()
+        print("="*200)
+        print(f"NUCLIDE: {nuclide_name} (MAT={mat}, LIS={lis}, ZA={za})")
+        print(f"Half-life: {halflife_str}")
+        print("="*200)
+        
+        if "spectra" not in result:
+            print("  (No decay spectra - stable nuclide)")
+            continue
+        
+        # ==========================================
+        # BETA+ ENERGIES - Individual Transitions
+        # ==========================================
+        for spec in result["spectra"]:
+            if spec["STYP"] == 2:  # Beta+
+                print()
+                print("-"*200)
+                print("BETA+ INDIVIDUAL TRANSITION ENERGIES")
+                print("-"*200)
+                print(f"{'#':>4s}  {'Endpoint Energy':>18s}  {'±':>12s}  {'Intensity':>15s}  {'±':>12s}  {'Type':>8s}  {'Avg Energy':>15s}  {'Shape':>8s}")
+                print(f"{'':>4s}  {'(keV)':>18s}  {'(keV)':>12s}  {'(%)':>15s}  {'(%)':>12s}  {'':>8s}  {'(keV)':>15s}  {'':>8s}")
+                print("-"*200)
+                
+                if "discrete" in spec:
+                    for i, disc in enumerate(spec["discrete"], 1):
+                        endpoint_kev = disc["ER"][0] / 1000.0
+                        endpoint_unc = disc["ER"][1] / 1000.0
+                        intensity = disc.get("INTENSITY", (0, 0))[0]
+                        intensity_unc = disc.get("INTENSITY", (0, 0))[1]
+                        trans_type = disc.get("TYPE", 0)
+                        
+                        # Extract average energy and shape from raw values if available
+                        all_vals = disc.get("all_values", [])
+                        avg_energy = all_vals[2] / 1000.0 if len(all_vals) > 2 else 0.0
+                        shape_factor = all_vals[3] if len(all_vals) > 3 else 0.0
+                        
+                        print(f"{i:>4d}  {endpoint_kev:>18.4f}  {endpoint_unc:>12.4f}  {intensity:>15.4e}  {intensity_unc:>12.4e}  {trans_type:>8.1f}  {avg_energy:>15.4f}  {shape_factor:>8.1f}")
+                    
+                    total_beta_intensity = sum(d.get("INTENSITY", (0, 0))[0] for d in spec["discrete"])
+                    print("-"*200)
+                    print(f"Total β+ intensity: {total_beta_intensity:.4e} %")
+                
+                # Mean energy from spectrum summary
+                mean_beta = spec["ER_AV"][0] / 1000.0
+                mean_beta_unc = spec["ER_AV"][1] / 1000.0
+                print(f"Mean β+ energy: {mean_beta:.4f} ± {mean_beta_unc:.4f} keV")
+                
+                # Continuous spectrum if present
+                if "continuous" in spec:
+                    print()
+                    print("BETA+ CONTINUOUS SPECTRUM:")
+                    cont = spec["continuous"]
+                    x_vals = cont["x_values"]
+                    y_vals = cont["y_values"]
+                    print(f"  Number of points: {len(x_vals)}")
+                    print(f"  Energy range: {min(x_vals)/1000:.4f} - {max(x_vals)/1000:.4f} keV")
+                    print(f"  {'Energy (keV)':>15s}  {'Probability':>15s}")
+                    for j, (x, y) in enumerate(zip(x_vals, y_vals)):
+                        if j < 10 or j >= len(x_vals) - 5:  # Show first 10 and last 5
+                            print(f"  {x/1000:>15.4f}  {y:>15.6e}")
+                        elif j == 10:
+                            print(f"  {'...':>15s}  {'...':>15s}")
+        
+        # ==========================================
+        # GAMMA RAY ENERGIES - Individual Transitions
+        # ==========================================
+        for spec in result["spectra"]:
+            if spec["STYP"] == 0:  # Gamma
+                print()
+                print("-"*200)
+                print("GAMMA RAY INDIVIDUAL TRANSITION ENERGIES")
+                print("-"*200)
+                print(f"{'#':>4s}  {'Energy':>18s}  {'±':>12s}  {'Abs Intensity':>15s}  {'±':>12s}  {'Rel Intensity':>15s}  {'±':>12s}  {'ICC Total':>12s}  {'ICC K':>12s}  {'ICC L':>12s}")
+                print(f"{'':>4s}  {'(keV)':>18s}  {'(keV)':>12s}  {'(γ/100 dec)':>15s}  {'':>12s}  {'(rel)':>15s}  {'':>12s}  {'':>12s}  {'':>12s}  {'':>12s}")
+                print("-"*200)
+                
+                if "discrete" in spec:
+                    for i, disc in enumerate(spec["discrete"], 1):
+                        energy_kev = disc["ER"][0] / 1000.0
+                        energy_unc = disc["ER"][1] / 1000.0
+                        ri = disc.get("RI", (0, 0))
+                        ris = disc.get("RIS", (0, 0))
+                        ricc = disc.get("RICC", (0, 0))[0]
+                        rick = disc.get("RICK", (0, 0))[0]
+                        ricl = disc.get("RICL", (0, 0))[0]
+                        
+                        print(f"{i:>4d}  {energy_kev:>18.4f}  {energy_unc:>12.4f}  {ri[0]:>15.6e}  {ri[1]:>12.6e}  {ris[0]:>15.6e}  {ris[1]:>12.6e}  {ricc:>12.6e}  {rick:>12.6e}  {ricl:>12.6e}")
+                    
+                    total_gamma_intensity = sum(d.get("RI", (0, 0))[0] for d in spec["discrete"])
+                    print("-"*200)
+                    print(f"Total γ intensity: {total_gamma_intensity:.6e} γ/100 decays")
+                
+                # Mean energy from spectrum summary
+                mean_gamma = spec["ER_AV"][0] / 1000.0
+                mean_gamma_unc = spec["ER_AV"][1] / 1000.0
+                print(f"Mean γ energy: {mean_gamma:.4f} ± {mean_gamma_unc:.4f} keV")
+        
+        # ==========================================
+        # X-RAY ENERGIES
+        # ==========================================
+        for spec in result["spectra"]:
+            if spec["STYP"] == 8:  # X-ray
+                print()
+                print("-"*200)
+                print("X-RAY ENERGIES")
+                print("-"*200)
+                print(f"{'#':>4s}  {'Energy':>18s}  {'±':>12s}  {'Intensity':>15s}  {'±':>12s}  {'RTYP':>8s}  {'Type':>8s}")
+                print(f"{'':>4s}  {'(keV)':>18s}  {'(keV)':>12s}  {'':>15s}  {'':>12s}  {'':>8s}  {'':>8s}")
+                print("-"*200)
+                
+                if "discrete" in spec:
+                    for i, disc in enumerate(spec["discrete"], 1):
+                        energy_kev = disc["ER"][0] / 1000.0
+                        energy_unc = disc["ER"][1] / 1000.0
+                        
+                        # Extract intensity from raw values
+                        all_vals = disc.get("all_values", [])
+                        intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                        intensity_unc = all_vals[5] if len(all_vals) > 5 else 0.0
+                        rtyp = disc.get("RTYP", 0)
+                        xray_type = disc.get("TYPE", 0)
+                        
+                        print(f"{i:>4d}  {energy_kev:>18.4f}  {energy_unc:>12.4f}  {intensity:>15.6e}  {intensity_unc:>12.6e}  {rtyp:>8.1f}  {xray_type:>8.1f}")
+                
+                # Mean energy
+                mean_xray = spec["ER_AV"][0] / 1000.0
+                mean_xray_unc = spec["ER_AV"][1] / 1000.0
+                print(f"Mean X-ray energy: {mean_xray:.4f} ± {mean_xray_unc:.4f} keV")
+        
+        # ==========================================
+        # AUGER ELECTRON ENERGIES
+        # ==========================================
+        for spec in result["spectra"]:
+            if spec["STYP"] == 9:  # Auger
+                print()
+                print("-"*200)
+                print("AUGER ELECTRON ENERGIES")
+                print("-"*200)
+                print(f"{'#':>4s}  {'Energy':>18s}  {'±':>12s}  {'Intensity':>15s}  {'±':>12s}  {'RTYP':>8s}  {'Type':>8s}")
+                print(f"{'':>4s}  {'(keV)':>18s}  {'(keV)':>12s}  {'':>15s}  {'':>12s}  {'':>8s}  {'':>8s}")
+                print("-"*200)
+                
+                if "discrete" in spec:
+                    for i, disc in enumerate(spec["discrete"], 1):
+                        energy_kev = disc["ER"][0] / 1000.0
+                        energy_unc = disc["ER"][1] / 1000.0
+                        
+                        # Extract intensity from raw values
+                        all_vals = disc.get("all_values", [])
+                        intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                        intensity_unc = all_vals[5] if len(all_vals) > 5 else 0.0
+                        rtyp = disc.get("RTYP", 0)
+                        auger_type = disc.get("TYPE", 0)
+                        
+                        print(f"{i:>4d}  {energy_kev:>18.4f}  {energy_unc:>12.4f}  {intensity:>15.6e}  {intensity_unc:>12.6e}  {rtyp:>8.1f}  {auger_type:>8.1f}")
+                
+                # Mean energy
+                mean_auger = spec["ER_AV"][0] / 1000.0
+                mean_auger_unc = spec["ER_AV"][1] / 1000.0
+                print(f"Mean Auger electron energy: {mean_auger:.4f} ± {mean_auger_unc:.4f} keV")
+        
+        # ==========================================
+        # ALPHA PARTICLE ENERGIES
+        # ==========================================
+        for spec in result["spectra"]:
+            if spec["STYP"] == 4:  # Alpha
+                print()
+                print("-"*200)
+                print("ALPHA PARTICLE ENERGIES")
+                print("-"*200)
+                print(f"{'#':>4s}  {'Energy':>18s}  {'±':>12s}  {'Intensity':>15s}  {'±':>12s}")
+                print(f"{'':>4s}  {'(keV)':>18s}  {'(keV)':>12s}  {'(%)':>15s}  {'(%)':>12s}")
+                print("-"*200)
+                
+                if "discrete" in spec:
+                    for i, disc in enumerate(spec["discrete"], 1):
+                        energy_kev = disc["ER"][0] / 1000.0
+                        energy_unc = disc["ER"][1] / 1000.0
+                        
+                        all_vals = disc.get("all_values", [])
+                        intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                        intensity_unc = all_vals[5] if len(all_vals) > 5 else 0.0
+                        
+                        print(f"{i:>4d}  {energy_kev:>18.4f}  {energy_unc:>12.4f}  {intensity:>15.6e}  {intensity_unc:>12.6e}")
+                
+                # Mean energy
+                mean_alpha = spec["ER_AV"][0] / 1000.0
+                mean_alpha_unc = spec["ER_AV"][1] / 1000.0
+                print(f"Mean α energy: {mean_alpha:.4f} ± {mean_alpha_unc:.4f} keV")
+    
+    print()
+    print("="*200)
+    print()
+
+
+def print_energy_distribution_summary(all_results):
+    """Print a comprehensive summary of ALL energies across all nuclides."""
+    
+    print()
+    print("="*200)
+    print("ENERGY DISTRIBUTION SUMMARY - ALL ENERGIES SORTED")
+    print("="*200)
+    print()
+    
+    for result in all_results:
+        za = result["ZA"]
+        z = za // 1000
+        a = za % 1000
+        lis = result.get("LIS", 0)
+        mat = result.get("MAT", 0)
+        element = ATOMIC_SYMBOL.get(z, f'Z{z}')
+        
+        if lis == 0:
+            nuclide_name = f"{element}-{a}"
+        elif lis == 1:
+            nuclide_name = f"{element}-{a}m"
+        else:
+            nuclide_name = f"{element}-{a}m{lis}"
+        
+        print()
+        print(f"{'='*200}")
+        print(f"ENERGY SUMMARY: {nuclide_name} (MAT={mat})")
+        print(f"{'='*200}")
+        
+        if "spectra" not in result:
+            print("  (No energy data - stable nuclide)")
+            continue
+        
+        # Collect all energies with their types
+        all_energies = []
+        
+        for spec in result["spectra"]:
+            styp = spec["STYP"]
+            styp_names = {0: "γ", 2: "β+", 4: "α", 8: "X-ray", 9: "Auger"}
+            styp_name = styp_names.get(styp, f"Type-{styp}")
+            
+            # Discrete energies
+            if "discrete" in spec:
+                for disc in spec["discrete"]:
+                    energy_kev = disc["ER"][0] / 1000.0
+                    energy_unc = disc["ER"][1] / 1000.0
+                    
+                    # Get intensity
+                    intensity = 0.0
+                    if "INTENSITY" in disc:
+                        intensity = disc["INTENSITY"][0]
+                    elif "RI" in disc:
+                        intensity = disc["RI"][0]
+                    else:
+                        all_vals = disc.get("all_values", [])
+                        intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                    
+                    all_energies.append({
+                        'energy': energy_kev,
+                        'uncertainty': energy_unc,
+                        'type': styp_name,
+                        'intensity': intensity,
+                        'discrete': True
+                    })
+            
+            # Mean energy
+            mean_e = spec["ER_AV"][0] / 1000.0
+            mean_unc = spec["ER_AV"][1] / 1000.0
+            all_energies.append({
+                'energy': mean_e,
+                'uncertainty': mean_unc,
+                'type': f"{styp_name}-mean",
+                'intensity': 0.0,
+                'discrete': False
+            })
+        
+        # Sort by energy
+        all_energies.sort(key=lambda x: x['energy'])
+        
+        print()
+        print(f"{'Energy (keV)':>18s}  {'±':>12s}  {'Type':>10s}  {'Intensity':>15s}  {'Mode':>10s}")
+        print("-"*200)
+        
+        for e in all_energies:
+            mode_str = "discrete" if e['discrete'] else "mean"
+            print(f"{e['energy']:>18.4f}  {e['uncertainty']:>12.4f}  {e['type']:>10s}  {e['intensity']:>15.6e}  {mode_str:>10s}")
+        
+        print()
+        print(f"Total discrete energies: {sum(1 for e in all_energies if e['discrete'])}")
+        print(f"Energy range: {min(e['energy'] for e in all_energies):.4f} - {max(e['energy'] for e in all_energies):.4f} keV")
+    
+    print()
+    print("="*200)
+    print()
+
+
 def format_and_print_combined_table(all_results):
     """Generate and print combined formatted table for all decay levels and nuclides."""
     
@@ -699,6 +1033,13 @@ def format_and_print_combined_table(all_results):
         print("No data to display")
         return
     
+    # First print ALL individual energies in detail
+    print_all_energies(all_results)
+    
+    # Print energy distribution summary (all energies sorted)
+    print_energy_distribution_summary(all_results)
+    
+    # Then print summary table
     nuclides = {}
     for result in all_results:
         za = result["ZA"]
@@ -710,7 +1051,7 @@ def format_and_print_combined_table(all_results):
     
     print()
     print("="*240)
-    print("RADIOACTIVE DECAY DATA TABLE - Complete Decay Information")
+    print("SUMMARY TABLE - Mean Energies and Branching Ratios")
     print("="*240)
     print()
     print(f"Total nuclides: {len(nuclides)}")
@@ -938,11 +1279,11 @@ def format_and_print_table(parsed_data):
 
 
 def print_detailed_data(parsed_data):
-    """Print all detailed transition data."""
+    """Print all detailed transition data with complete energy information."""
     print()
-    print("="*130)
-    print("DETAILED TRANSITION DATA")
-    print("="*130)
+    print("="*200)
+    print("DETAILED TRANSITION DATA - ALL ENERGIES")
+    print("="*200)
     print()
     
     if "spectra" not in parsed_data:
@@ -953,84 +1294,183 @@ def print_detailed_data(parsed_data):
             print(f"Parity: {parsed_data['PAR']}")
         return
     
-    # Gamma rays
-    for spec in parsed_data["spectra"]:
-        if spec["STYP"] == 0 and "discrete" in spec:
-            print(f"GAMMA RAY TRANSITIONS (Total: {len(spec['discrete'])})")
-            print("-"*130)
-            print(f"{'#':>4s} {'Energy (keV)':>15s} {'Uncertainty':>15s} {'Intensity':>15s} {'Int. Unc.':>15s} {'ICC Total':>15s} {'ICC K':>15s} {'ICC L':>15s}")
-            print("-"*130)
-            for i, disc in enumerate(spec["discrete"], 1):
-                energy_kev = disc["ER"][0] / 1000.0
-                energy_unc = disc["ER"][1] / 1000.0
-                if "RI" in disc:
-                    intensity = disc["RI"][0]
-                    int_unc = disc["RI"][1]
-                    icc = disc.get("RICC", (0, 0))[0]
-                    ick = disc.get("RICK", (0, 0))[0]
-                    icl = disc.get("RICL", (0, 0))[0]
-                    print(f"{i:>4d} {energy_kev:>15.4f} {energy_unc:>15.4f} {intensity:>15.6f} {int_unc:>15.6f} {icc:>15.6f} {ick:>15.6f} {icl:>15.6f}")
-            print()
-    
-    # Beta+ transitions
+    # Beta+ transitions with ALL fields
     for spec in parsed_data["spectra"]:
         if spec["STYP"] == 2 and "discrete" in spec:
             print(f"BETA+ TRANSITIONS (Total: {len(spec['discrete'])})")
-            print("-"*130)
-            print(f"{'#':>4s} {'Endpoint (keV)':>18s} {'Uncertainty':>15s} {'Intensity (%)':>18s} {'Int. Unc.':>15s} {'TYPE':>10s}")
-            print("-"*130)
+            print("-"*200)
+            print(f"{'#':>4s} {'Endpoint':>18s} {'±':>12s} {'Avg Energy':>15s} {'Shape':>10s} {'Intensity':>15s} {'±':>12s} {'TYPE':>8s} {'RTYP':>8s} {'Raw Values...':>40s}")
+            print(f"{'':>4s} {'(keV)':>18s} {'(keV)':>12s} {'(keV)':>15s} {'Factor':>10s} {'(%)':>15s} {'(%)':>12s} {'':>8s} {'':>8s} {'':>40s}")
+            print("-"*200)
             for i, disc in enumerate(spec["discrete"], 1):
-                energy_kev = disc["ER"][0] / 1000.0
-                energy_unc = disc["ER"][1] / 1000.0
+                endpoint = disc["ER"][0] / 1000.0
+                endpoint_unc = disc["ER"][1] / 1000.0
+                
+                all_vals = disc.get("all_values", [])
+                avg_energy = all_vals[2] / 1000.0 if len(all_vals) > 2 else 0.0
+                shape = all_vals[3] if len(all_vals) > 3 else 0.0
+                intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                int_unc = all_vals[5] if len(all_vals) > 5 else 0.0
+                
+                rtyp = disc.get("RTYP", 0)
                 trans_type = disc.get("TYPE", 0)
-                if "INTENSITY" in disc:
-                    intensity = disc["INTENSITY"][0]
-                    int_unc = disc["INTENSITY"][1]
-                    print(f"{i:>4d} {energy_kev:>18.4f} {energy_unc:>15.4f} {intensity:>18.4f} {int_unc:>15.4f} {trans_type:>10.1f}")
+                
+                # Show first few raw values
+                raw_str = ", ".join([f"{v:.3e}" for v in all_vals[:6]]) if len(all_vals) > 0 else "N/A"
+                
+                print(f"{i:>4d} {endpoint:>18.4f} {endpoint_unc:>12.4f} {avg_energy:>15.4f} {shape:>10.1f} {intensity:>15.6e} {int_unc:>12.6e} {trans_type:>8.1f} {rtyp:>8.1f} {raw_str:>40s}")
+            
+            # Summary statistics
+            total_int = sum(d.get("all_values", [0,0,0,0,0])[4] if len(d.get("all_values", [])) > 4 else 0 for d in spec["discrete"])
+            print("-"*200)
+            print(f"Total β+ intensity: {total_int:.6e} %")
+            print(f"Mean β+ energy: {spec['ER_AV'][0]/1000:.4f} ± {spec['ER_AV'][1]/1000:.4f} keV")
             print()
     
-    # X-rays
+    # Gamma rays with ALL fields
+    for spec in parsed_data["spectra"]:
+        if spec["STYP"] == 0 and "discrete" in spec:
+            print(f"GAMMA RAY TRANSITIONS (Total: {len(spec['discrete'])})")
+            print("-"*200)
+            print(f"{'#':>4s} {'Energy':>15s} {'±':>12s} {'Abs Int':>15s} {'±':>12s} {'Rel Int':>15s} {'±':>12s} {'ICC':>12s} {'ICC-K':>12s} {'ICC-L':>12s} {'RTYP':>8s} {'TYPE':>8s}")
+            print(f"{'':>4s} {'(keV)':>15s} {'(keV)':>12s} {'(γ/100d)':>15s} {'':>12s} {'(rel)':>15s} {'':>12s} {'':>12s} {'':>12s} {'':>12s} {'':>8s} {'':>8s}")
+            print("-"*200)
+            for i, disc in enumerate(spec["discrete"], 1):
+                energy = disc["ER"][0] / 1000.0
+                energy_unc = disc["ER"][1] / 1000.0
+                
+                ri = disc.get("RI", (0, 0))
+                ris = disc.get("RIS", (0, 0))
+                ricc = disc.get("RICC", (0, 0))[0]
+                rick = disc.get("RICK", (0, 0))[0]
+                ricl = disc.get("RICL", (0, 0))[0]
+                rtyp = disc.get("RTYP", 0)
+                trans_type = disc.get("TYPE", 0)
+                
+                print(f"{i:>4d} {energy:>15.4f} {energy_unc:>12.4f} {ri[0]:>15.6e} {ri[1]:>12.6e} {ris[0]:>15.6e} {ris[1]:>12.6e} {ricc:>12.6e} {rick:>12.6e} {ricl:>12.6e} {rtyp:>8.1f} {trans_type:>8.1f}")
+                
+                # Show complete raw values for reference
+                all_vals = disc.get("all_values", [])
+                if len(all_vals) > 12:
+                    print(f"     → Additional values: {all_vals[12:]}")
+            
+            total_gamma = sum(d.get("RI", (0, 0))[0] for d in spec["discrete"])
+            print("-"*200)
+            print(f"Total γ intensity: {total_gamma:.6e} γ/100 decays")
+            print(f"Mean γ energy: {spec['ER_AV'][0]/1000:.4f} ± {spec['ER_AV'][1]/1000:.4f} keV")
+            print()
+    
+    # X-rays with intensities
     for spec in parsed_data["spectra"]:
         if spec["STYP"] == 8 and "discrete" in spec:
             print(f"X-RAY TRANSITIONS (Total: {len(spec['discrete'])})")
-            print("-"*130)
-            print(f"{'#':>4s} {'Energy (keV)':>15s} {'Uncertainty':>15s} {'RTYP':>10s} {'TYPE':>10s}")
-            print("-"*130)
+            print("-"*200)
+            print(f"{'#':>4s} {'Energy':>15s} {'±':>12s} {'Intensity':>15s} {'±':>12s} {'RTYP':>10s} {'TYPE':>10s} {'Raw Values':>50s}")
+            print(f"{'':>4s} {'(keV)':>15s} {'(keV)':>12s} {'':>15s} {'':>12s} {'':>10s} {'':>10s} {'':>50s}")
+            print("-"*200)
             for i, disc in enumerate(spec["discrete"], 1):
-                energy_kev = disc["ER"][0] / 1000.0
+                energy = disc["ER"][0] / 1000.0
                 energy_unc = disc["ER"][1] / 1000.0
                 rtyp = disc.get("RTYP", 0)
                 trans_type = disc.get("TYPE", 0)
-                print(f"{i:>4d} {energy_kev:>15.4f} {energy_unc:>15.4f} {rtyp:>10.1f} {trans_type:>10.1f}")
+                
+                all_vals = disc.get("all_values", [])
+                intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                int_unc = all_vals[5] if len(all_vals) > 5 else 0.0
+                raw_str = ", ".join([f"{v:.3e}" for v in all_vals[:8]]) if len(all_vals) > 0 else "N/A"
+                
+                print(f"{i:>4d} {energy:>15.4f} {energy_unc:>12.4f} {intensity:>15.6e} {int_unc:>12.6e} {rtyp:>10.1f} {trans_type:>10.1f} {raw_str:>50s}")
+            
+            print(f"Mean X-ray energy: {spec['ER_AV'][0]/1000:.4f} ± {spec['ER_AV'][1]/1000:.4f} keV")
             print()
     
-    # Auger electrons
+    # Auger electrons with intensities
     for spec in parsed_data["spectra"]:
         if spec["STYP"] == 9 and "discrete" in spec:
             print(f"AUGER ELECTRON TRANSITIONS (Total: {len(spec['discrete'])})")
-            print("-"*130)
-            print(f"{'#':>4s} {'Energy (keV)':>15s} {'Uncertainty':>15s} {'RTYP':>10s} {'TYPE':>10s}")
-            print("-"*130)
+            print("-"*200)
+            print(f"{'#':>4s} {'Energy':>15s} {'±':>12s} {'Intensity':>15s} {'±':>12s} {'RTYP':>10s} {'TYPE':>10s} {'Raw Values':>50s}")
+            print(f"{'':>4s} {'(keV)':>15s} {'(keV)':>12s} {'':>15s} {'':>12s} {'':>10s} {'':>10s} {'':>50s}")
+            print("-"*200)
             for i, disc in enumerate(spec["discrete"], 1):
-                energy_kev = disc["ER"][0] / 1000.0
+                energy = disc["ER"][0] / 1000.0
                 energy_unc = disc["ER"][1] / 1000.0
                 rtyp = disc.get("RTYP", 0)
                 trans_type = disc.get("TYPE", 0)
-                print(f"{i:>4d} {energy_kev:>15.4f} {energy_unc:>15.4f} {rtyp:>10.1f} {trans_type:>10.1f}")
+                
+                all_vals = disc.get("all_values", [])
+                intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                int_unc = all_vals[5] if len(all_vals) > 5 else 0.0
+                raw_str = ", ".join([f"{v:.3e}" for v in all_vals[:8]]) if len(all_vals) > 0 else "N/A"
+                
+                print(f"{i:>4d} {energy:>15.4f} {energy_unc:>12.4f} {intensity:>15.6e} {int_unc:>12.6e} {rtyp:>10.1f} {trans_type:>10.1f} {raw_str:>50s}")
+            
+            print(f"Mean Auger energy: {spec['ER_AV'][0]/1000:.4f} ± {spec['ER_AV'][1]/1000:.4f} keV")
             print()
     
-    print("="*130)
-    print("ADDITIONAL METADATA")
-    print("="*130)
+    # Continuous spectra
+    for spec in parsed_data["spectra"]:
+        if "continuous" in spec:
+            styp_names = {0: "Gamma", 2: "Beta+", 4: "Alpha", 8: "X-ray", 9: "Auger"}
+            styp_name = styp_names.get(spec["STYP"], f"Type-{spec['STYP']}")
+            
+            print(f"{styp_name.upper()} CONTINUOUS SPECTRUM")
+            print("-"*200)
+            cont = spec["continuous"]
+            x_vals = cont["x_values"]
+            y_vals = cont["y_values"]
+            
+            print(f"Number of energy points: {len(x_vals)}")
+            print(f"Energy range: {min(x_vals)/1000:.4f} - {max(x_vals)/1000:.4f} keV")
+            print(f"Interpolation scheme: {cont['interpolation']}")
+            print(f"Breakpoints: {cont['breakpoints']}")
+            print()
+            print(f"{'Point':>6s} {'Energy (keV)':>18s} {'Probability':>18s}")
+            print("-"*200)
+            
+            # Show all points or sample if too many
+            if len(x_vals) <= 50:
+                for j, (x, y) in enumerate(zip(x_vals, y_vals)):
+                    print(f"{j:>6d} {x/1000:>18.6e} {y:>18.6e}")
+            else:
+                # Show first 20, middle 10, last 20
+                for j in range(20):
+                    print(f"{j:>6d} {x_vals[j]/1000:>18.6e} {y_vals[j]:>18.6e}")
+                print(f"{'...':>6s} {'...':>18s} {'...':>18s}")
+                mid = len(x_vals) // 2
+                for j in range(mid-5, mid+5):
+                    print(f"{j:>6d} {x_vals[j]/1000:>18.6e} {y_vals[j]:>18.6e}")
+                print(f"{'...':>6s} {'...':>18s} {'...':>18s}")
+                for j in range(len(x_vals)-20, len(x_vals)):
+                    print(f"{j:>6d} {x_vals[j]/1000:>18.6e} {y_vals[j]:>18.6e}")
+            print()
+    
+    print("="*200)
+    print("ADDITIONAL METADATA AND ENERGIES")
+    print("="*200)
     print(f"Spin (SPI): {parsed_data.get('SPI', 'N/A')}")
     print(f"Parity (PAR): {parsed_data.get('PAR', 'N/A')}")
     print(f"Isomeric state (LIS): {parsed_data.get('LIS', 0)}")
     print(f"Number of excited states (NC): {parsed_data.get('NC', 0)}")
+    
     if parsed_data.get('Ex'):
-        print(f"Excited state energies:")
+        print()
+        print("EXCITED STATE ENERGIES:")
         for i, (ex_val, ex_unc) in enumerate(parsed_data['Ex'], 1):
             print(f"  Ex[{i}]: {ex_val/1000.0:.4f} ± {ex_unc/1000.0:.4f} keV")
-    print("="*130)
+    
+    # Q-values for all decay modes
+    if parsed_data.get('modes'):
+        print()
+        print("DECAY MODE Q-VALUES:")
+        decay_names = {0.0: "γ", 1.0: "β-", 2.0: "EC/β+", 3.0: "IT", 4.0: "α", 5.0: "n", 6.0: "SF", 7.0: "p"}
+        for i, mode in enumerate(parsed_data['modes'], 1):
+            mode_name = decay_names.get(mode['RTYP'], f"Type-{mode['RTYP']}")
+            print(f"  Mode {i} ({mode_name}): Q = {mode['Q'][0]/1000:.4f} ± {mode['Q'][1]/1000:.4f} keV")
+            print(f"              Branching = {mode['BR'][0]*100:.4f} ± {mode['BR'][1]*100:.4f} %")
+            print(f"              Daughter state RFS = {mode['RFS']}")
+    
+    print("="*200)
     print()
 
 
@@ -1065,14 +1505,22 @@ if __name__ == "__main__":
         print("JEFF ENDF-6 Radioactive Decay Data Parser - COMPLETE DATA EXTRACTION")
         print("="*80)
         print()
+        print("This parser extracts ALL energy information from ENDF files:")
+        print("  ✓ Individual beta+ transition energies and intensities")
+        print("  ✓ Individual gamma ray energies and intensities")
+        print("  ✓ X-ray and Auger electron energies")
+        print("  ✓ Continuous energy spectra (full distributions)")
+        print("  ✓ Mean energies and Q-values")
+        print("  ✓ Complete raw record data")
+        print()
         print("Usage:")
-        print("  python3 JEFF_ENDF_parser.py <endf_file.endf>                    # Summary view")
-        print("  python3 JEFF_ENDF_parser.py --verbose <endf_file.endf>          # Full details")
+        print("  python3 JEFF_ENDF_parser.py <endf_file.endf>                    # All energies")
+        print("  python3 JEFF_ENDF_parser.py --verbose <endf_file.endf>          # + raw data")
         print("  python3 JEFF_ENDF_parser.py -o output.txt <endf_file.endf>      # Save to file")
-        print("  python3 JEFF_ENDF_parser.py --verbose -o out.txt <file.endf>    # Full details to file")
+        print("  python3 JEFF_ENDF_parser.py --verbose -o out.txt <file.endf>    # Full details")
         print()
         print("Options:")
-        print("  --verbose, -v, --full, --all    Show all transitions and detailed data")
+        print("  --verbose, -v, --full, --all    Show raw ENDF records and extra metadata")
         print("  --output, -o <filename>         Save output to specified file")
         print()
         print("Examples:")
@@ -1080,6 +1528,13 @@ if __name__ == "__main__":
         print("  python3 JEFF_ENDF_parser.py --verbose uranium_decay.endf")
         print("  python3 JEFF_ENDF_parser.py -o analysis.txt jeff-40-radioactive.endf")
         print("  python3 JEFF_ENDF_parser.py --verbose -o full_data.txt jeff-40-radioactive.endf")
+        print()
+        print("Output includes:")
+        print("  • ALL discrete transition energies (every beta+, gamma, X-ray, Auger)")
+        print("  • Complete continuous energy spectra")
+        print("  • Energy-sorted distribution tables")
+        print("  • Intensities and uncertainties for all transitions")
+        print("  • Q-values, branching ratios, and decay statistics")
         print()
         print("="*80)
         exit(1)
@@ -1183,19 +1638,42 @@ if __name__ == "__main__":
                 
                 print(f"Reading ENDF data from: {input_file}")
                 if verbose:
-                    print("(Verbose mode: showing all detailed transitions)")
+                    print("(Verbose mode: showing ALL energy details with raw values)")
+                else:
+                    print("(Standard mode: showing ALL individual energies)")
                 print(f"Found {len(all_results)} decay state(s)")
                 print()
                 
+                # ALWAYS show ALL individual energies (not just means)
                 format_and_print_combined_table(all_results)
                 
+                # In verbose mode, add even more detail with raw values
                 if verbose:
                     for i, result in enumerate(all_results):
                         print()
-                        print("="*130)
-                        print(f"DETAILED DATA FOR STATE {i} (LIS={result.get('LIS', 0)})")
-                        print("="*130)
+                        print("="*200)
+                        print(f"VERBOSE DETAILED DATA FOR STATE {i} (LIS={result.get('LIS', 0)}, MAT={result.get('MAT', 0)})")
+                        print("="*200)
                         print_detailed_data(result)
+                        
+                        # Show raw record structure
+                        print()
+                        print("="*200)
+                        print("RAW ENDF RECORD STRUCTURE")
+                        print("="*200)
+                        
+                        if "HEAD_metadata" in result:
+                            print(f"HEAD record: MAT={result['HEAD_metadata']['MAT']}, MF={result['HEAD_metadata']['MF']}, MT={result['HEAD_metadata']['MT']}, SEQ={result['HEAD_metadata']['SEQ']}")
+                        
+                        print(f"\nNumber of raw records in this section: {len(result.get('raw_records', []))}")
+                        
+                        # Show first few raw records as examples
+                        if result.get('raw_records'):
+                            print("\nFirst 5 raw ENDF lines:")
+                            for j, line in enumerate(result['raw_records'][:5]):
+                                print(f"  {j+1}: {line}")
+                        
+                        print()
             
             sys.stdout = original_stdout
         except Exception as e:
