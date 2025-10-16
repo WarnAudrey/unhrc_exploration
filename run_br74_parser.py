@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 """
-ENDF-6 Radioactive Decay Data Parser (MF=8, MT=457)
+ENDF-6 Radioactive Decay Data Parser (MF=8, MT=457) - Universal MAT Support
 
 Parses ENDF-6 format radioactive decay data from external files.
+Supports ALL material (MAT) numbers and automatically detects all nuclides.
 Implements proper B+/EC splitting according to ENDF-102 specifications.
+
+Features:
+- Parses ALL MF=8 MT=457 sections in a single file
+- Works with ANY nuclide (any MAT number)
+- Handles multiple isomeric states
+- Groups results by nuclide and displays combined tables
+- Accurate B+/EC branching ratio calculations
 
 Usage:
     python3 run_br74_parser.py <endf_file.txt>              # Summary view
@@ -309,55 +317,130 @@ def extract_bplus_branching(parsed_data):
 
 
 def format_and_print_combined_table(all_results):
-    """Generate and print combined formatted table for all decay levels."""
+    """Generate and print combined formatted table for all decay levels and nuclides."""
     
     if not all_results:
         print("No data to display")
         return
     
-    # Extract basic info from first result
-    za = all_results[0]["ZA"]
-    z = za // 1000
-    a = za % 1000
+    # Group results by nuclide (ZA)
+    nuclides = {}
+    for result in all_results:
+        za = result["ZA"]
+        if za not in nuclides:
+            nuclides[za] = []
+        nuclides[za].append(result)
     
-    # Extract element symbol
-    ELEMENT_SYMBOLS = {35: 'Br', 74: 'W'}
-    element = ELEMENT_SYMBOLS.get(z, f'Z{z}')
+    # Element symbol lookup (expanded)
+    ELEMENT_SYMBOLS = {
+        0: 'n', 1: 'H', 2: 'He', 3: 'Li', 4: 'Be', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 10: 'Ne',
+        11: 'Na', 12: 'Mg', 13: 'Al', 14: 'Si', 15: 'P', 16: 'S', 17: 'Cl', 18: 'Ar', 19: 'K', 20: 'Ca',
+        21: 'Sc', 22: 'Ti', 23: 'V', 24: 'Cr', 25: 'Mn', 26: 'Fe', 27: 'Co', 28: 'Ni', 29: 'Cu', 30: 'Zn',
+        31: 'Ga', 32: 'Ge', 33: 'As', 34: 'Se', 35: 'Br', 36: 'Kr', 37: 'Rb', 38: 'Sr', 39: 'Y', 40: 'Zr',
+        41: 'Nb', 42: 'Mo', 43: 'Tc', 44: 'Ru', 45: 'Rh', 46: 'Pd', 47: 'Ag', 48: 'Cd', 49: 'In', 50: 'Sn',
+        51: 'Sb', 52: 'Te', 53: 'I', 54: 'Xe', 55: 'Cs', 56: 'Ba', 57: 'La', 58: 'Ce', 59: 'Pr', 60: 'Nd',
+        61: 'Pm', 62: 'Sm', 63: 'Eu', 64: 'Gd', 65: 'Tb', 66: 'Dy', 67: 'Ho', 68: 'Er', 69: 'Tm', 70: 'Yb',
+        71: 'Lu', 72: 'Hf', 73: 'Ta', 74: 'W', 75: 'Re', 76: 'Os', 77: 'Ir', 78: 'Pt', 79: 'Au', 80: 'Hg',
+        81: 'Tl', 82: 'Pb', 83: 'Bi', 84: 'Po', 85: 'At', 86: 'Rn', 87: 'Fr', 88: 'Ra', 89: 'Ac', 90: 'Th',
+        91: 'Pa', 92: 'U', 93: 'Np', 94: 'Pu', 95: 'Am', 96: 'Cm', 97: 'Bk', 98: 'Cf', 99: 'Es', 100: 'Fm'
+    }
     
     # Print header
     print()
-    print("="*130)
-    print(f"ENDF-6 Radioactive Decay Data Parser (ENDF-102 Compliant)")
-    print("="*130)
+    print("="*140)
+    print(f"ENDF-6 Radioactive Decay Data Parser (ENDF-102 Compliant) - Universal MAT Support")
+    print("="*140)
     print()
-    print(f"Nuclide: {element}-{a} (Z={z}, A={a})")
-    print(f"Number of decay states: {len(all_results)}")
+    print(f"Number of nuclides: {len(nuclides)}")
+    print(f"Total decay sections: {len(all_results)}")
     print()
     
-    # Show info for each state
-    for i, result in enumerate(all_results):
-        lis = result.get("LIS", 0)
-        halflife_s = result["T1/2"][0]
+    # Show info for each nuclide and its states
+    state_counter = 0
+    for za in sorted(nuclides.keys()):
+        z = za // 1000
+        a = za % 1000
+        element = ELEMENT_SYMBOLS.get(z, f'Z{z}')
         
-        print(f"State {i} (Level {lis}):")
-        print(f"  Half-life: {halflife_s:.4e} seconds ({halflife_s/60.0:.2f} minutes)")
+        print(f"Nuclide: {element}-{a} (Z={z}, A={a}, ZA={za})")
+        print(f"  Number of decay states: {len(nuclides[za])}")
+        print()
         
-        if result.get("modes"):
+        for result in nuclides[za]:
+            lis = result.get("LIS", 0)
+            liso = result.get("LISO", 0)
+            mat = result.get("MAT", 0)
+            halflife_s = result["T1/2"][0]
+            
+            level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
+            
+            print(f"  State {state_counter} (MAT={mat}, LIS={lis}, LISO={liso}):")
+            print(f"    Name: {level_name}")
+            print(f"    Half-life: {halflife_s:.4e} seconds ({halflife_s/60.0:.2f} minutes)")
+            
+            if result.get("modes"):
+                mode = result["modes"][0]
+                q_kev = mode["Q"][0] / 1000.0
+                rtyp = mode["RTYP"]
+                total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
+                
+                print(f"    Q-value: {q_kev:.4f} keV")
+                print(f"    RTYP: {rtyp} → {'EC/β+ decay' if rtyp == 2.0 else f'Decay type {rtyp}'}")
+                
+                # Calculate B+/EC split
+                bplus_br_pct = extract_bplus_branching(result)
+                ec_br_pct = total_br_pct - bplus_br_pct
+                
+                print(f"    Total Branching Ratio: {total_br_pct:.4f}%")
+                print(f"    β+ Branching: {bplus_br_pct:.4f}%")
+                print(f"    EC Branching: {ec_br_pct:.4f}%")
+                
+                # Mean energies
+                mean_alpha = 0.0
+                mean_beta = 0.0
+                mean_gamma = 0.0
+                
+                for spec in result["spectra"]:
+                    styp = spec["STYP"]
+                    er_av_kev = spec["ER_AV"][0] / 1000.0
+                    
+                    if styp == 0:  # Gamma
+                        mean_gamma = er_av_kev
+                    elif styp == 2:  # Beta+
+                        mean_beta = er_av_kev
+                    elif styp == 4:  # Alpha
+                        mean_alpha = er_av_kev
+                
+                print(f"    Mean energies: α={mean_alpha:.4f} keV, β={mean_beta:.4f} keV, γ={mean_gamma:.4f} keV")
+            print()
+            state_counter += 1
+    
+    # Print combined table
+    print("="*140)
+    print("DECAY MODES TABLE (ALL NUCLIDES AND LEVELS)")
+    print("="*140)
+    print()
+    print(f"{'MAT':5s} {'A':4s} {'Z':3s} {'Parent':>8s} {'Decay':>8s} {'Daughter':>8s} {'Q-value':>15s} {'Branching':>15s} {'Half-life':>15s} {'α Energy':>15s} {'β Energy':>15s} {'γ Energy':>15s}")
+    print(f"{'':5s} {'':4s} {'':3s} {'Level':>8s} {'Mode':>8s} {'Level':>8s} {'(keV)':>15s} {'Ratio (%)':>15s} {'(seconds)':>15s} {'(keV)':>15s} {'(keV)':>15s} {'(keV)':>15s}")
+    print("-"*140)
+    
+    # Print rows for each nuclide, state, and decay mode
+    for za in sorted(nuclides.keys()):
+        z = za // 1000
+        a = za % 1000
+        
+        for result in nuclides[za]:
+            lis = result.get("LIS", 0)
+            mat = result.get("MAT", 0)
+            halflife_s = result["T1/2"][0]
+            
+            if not result.get("modes"):
+                continue
+            
             mode = result["modes"][0]
             q_kev = mode["Q"][0] / 1000.0
             rtyp = mode["RTYP"]
             total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
-            
-            print(f"  Q-value: {q_kev:.4f} keV")
-            print(f"  RTYP: {rtyp} → {'EC/β+ decay' if rtyp == 2.0 else f'Decay type {rtyp}'}")
-            
-            # Calculate B+/EC split
-            bplus_br_pct = extract_bplus_branching(result)
-            ec_br_pct = total_br_pct - bplus_br_pct
-            
-            print(f"  Total Branching Ratio: {total_br_pct:.4f}%")
-            print(f"  β+ Branching: {bplus_br_pct:.4f}%")
-            print(f"  EC Branching: {ec_br_pct:.4f}%")
             
             # Mean energies
             mean_alpha = 0.0
@@ -368,81 +451,46 @@ def format_and_print_combined_table(all_results):
                 styp = spec["STYP"]
                 er_av_kev = spec["ER_AV"][0] / 1000.0
                 
-                if styp == 0:  # Gamma
+                if styp == 0:
                     mean_gamma = er_av_kev
-                elif styp == 2:  # Beta+
+                elif styp == 2:
                     mean_beta = er_av_kev
-                elif styp == 4:  # Alpha
+                elif styp == 4:
                     mean_alpha = er_av_kev
             
-            print(f"  Mean energies: α={mean_alpha:.4f} keV, β={mean_beta:.4f} keV, γ={mean_gamma:.4f} keV")
-        print()
-    
-    # Print combined table
-    print("="*130)
-    print("DECAY MODES TABLE (ALL LEVELS)")
-    print("="*130)
-    print()
-    print(f"{'A':4s} {'Z':3s} {'Parent':>8s} {'Decay':>8s} {'Daughter':>8s} {'Q-value':>15s} {'Branching':>15s} {'Half-life':>15s} {'α Energy':>15s} {'β Energy':>15s} {'γ Energy':>15s}")
-    print(f"{'':4s} {'':3s} {'Level':>8s} {'Mode':>8s} {'Level':>8s} {'(keV)':>15s} {'Ratio (%)':>15s} {'(seconds)':>15s} {'(keV)':>15s} {'(keV)':>15s} {'(keV)':>15s}")
-    print("-"*130)
-    
-    # Print rows for each state and decay mode
-    for result in all_results:
-        lis = result.get("LIS", 0)
-        halflife_s = result["T1/2"][0]
-        
-        if not result.get("modes"):
-            continue
-        
-        mode = result["modes"][0]
-        q_kev = mode["Q"][0] / 1000.0
-        rtyp = mode["RTYP"]
-        total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
-        
-        # Mean energies
-        mean_alpha = 0.0
-        mean_beta = 0.0
-        mean_gamma = 0.0
-        
-        for spec in result["spectra"]:
-            styp = spec["STYP"]
-            er_av_kev = spec["ER_AV"][0] / 1000.0
-            
-            if styp == 0:
-                mean_gamma = er_av_kev
-            elif styp == 2:
-                mean_beta = er_av_kev
-            elif styp == 4:
-                mean_alpha = er_av_kev
-        
-        # Calculate B+/EC split
-        bplus_br_pct = extract_bplus_branching(result)
-        ec_br_pct = total_br_pct - bplus_br_pct
-        
-        # Print B+ row
-        print(f"{a:<4d} {z:<3d} {lis:>8d} {'B+':>8s} {0:>8d} {q_kev:>15.4f} {bplus_br_pct:>15.4f} {halflife_s:>15.4e} {mean_alpha:>15.4f} {mean_beta:>15.4f} {mean_gamma:>15.4f}")
-        
-        # Print EC row
-        print(f"{a:<4d} {z:<3d} {lis:>8d} {'EC':>8s} {0:>8d} {q_kev:>15.4f} {ec_br_pct:>15.4f} {halflife_s:>15.4e} {mean_alpha:>15.4f} {mean_beta:>15.4f} {mean_gamma:>15.4f}")
-    
-    print("-"*130)
-    print()
-    print("Summary:")
-    for result in all_results:
-        lis = result.get("LIS", 0)
-        halflife_s = result["T1/2"][0]
-        
-        if result.get("modes"):
+            # Calculate B+/EC split
             bplus_br_pct = extract_bplus_branching(result)
-            mode = result["modes"][0]
-            total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
             ec_br_pct = total_br_pct - bplus_br_pct
             
-            level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m"
-            print(f"  • {level_name} (level {lis}) undergoes EC/β+ decay with T½ = {halflife_s/60.0:.2f} minutes")
-            print(f"    - β+ emission: {bplus_br_pct:.2f}% | EC: {ec_br_pct:.2f}%")
-    print("="*130)
+            # Print B+ row
+            print(f"{mat:<5d} {a:<4d} {z:<3d} {lis:>8d} {'B+':>8s} {0:>8d} {q_kev:>15.4f} {bplus_br_pct:>15.4f} {halflife_s:>15.4e} {mean_alpha:>15.4f} {mean_beta:>15.4f} {mean_gamma:>15.4f}")
+            
+            # Print EC row
+            print(f"{mat:<5d} {a:<4d} {z:<3d} {lis:>8d} {'EC':>8s} {0:>8d} {q_kev:>15.4f} {ec_br_pct:>15.4f} {halflife_s:>15.4e} {mean_alpha:>15.4f} {mean_beta:>15.4f} {mean_gamma:>15.4f}")
+    
+    print("-"*140)
+    print()
+    print("Summary:")
+    for za in sorted(nuclides.keys()):
+        z = za // 1000
+        a = za % 1000
+        element = ELEMENT_SYMBOLS.get(z, f'Z{z}')
+        
+        for result in nuclides[za]:
+            lis = result.get("LIS", 0)
+            mat = result.get("MAT", 0)
+            halflife_s = result["T1/2"][0]
+            
+            if result.get("modes"):
+                bplus_br_pct = extract_bplus_branching(result)
+                mode = result["modes"][0]
+                total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
+                ec_br_pct = total_br_pct - bplus_br_pct
+                
+                level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
+                print(f"  • {level_name} (MAT={mat}, level {lis}) undergoes EC/β+ decay with T½ = {halflife_s/60.0:.2f} minutes")
+                print(f"    - β+ emission: {bplus_br_pct:.2f}% | EC: {ec_br_pct:.2f}%")
+    print("="*140)
     print()
 
 
@@ -714,36 +762,43 @@ if __name__ == "__main__":
     input_file = file_arg
     
     try:
-        # Parse ALL MF=8 MT=457 sections in the file
+        # Parse ALL MF=8 MT=457 sections in the file (all MAT types)
         all_results = []
         
         with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
             lines = f.readlines()
         
-        # Find all MF=8 MT=457 sections
-        section_starts = []
+        # Find all MF=8 MT=457 sections with their MAT numbers
+        section_info = []  # List of (line_num, mat_num) tuples
         for i, line in enumerate(lines):
             if len(line) >= 75:
                 try:
+                    mat = int(line[66:70].strip() or 0)
                     mf = int(line[70:72].strip() or 0)
                     mt = int(line[72:75].strip() or 0)
                     seq = int(line[75:80].strip() or 0)
                     if mf == 8 and mt == 457 and seq == 1:  # HEAD record
-                        section_starts.append(i)
+                        section_info.append((i, mat))
                 except:
                     continue
         
-        if not section_starts:
+        if not section_info:
             print("ERROR: No MF=8 MT=457 section found in file")
             print("This file may not contain radioactive decay data.")
             exit(1)
         
+        # Extract unique MAT numbers
+        unique_mats = sorted(set([mat for _, mat in section_info]))
+        
+        print(f"Found {len(section_info)} decay section(s) across {len(unique_mats)} material(s): MAT={', '.join(map(str, unique_mats))}")
+        
         # Parse each section
-        for start_pos in section_starts:
+        for start_pos, mat_num in section_info:
             parser = ENDFNumericDecayParser()
             parser.load_file(input_file)
             parser._pos = start_pos
             result = parser._parse_mf8_mt457()
+            result["MAT"] = mat_num  # Store MAT number with result
             all_results.append(result)
         
         # Redirect output to file
@@ -782,17 +837,32 @@ if __name__ == "__main__":
             print(f"✓ Mode: Summary view")
         
         # Show brief summary to console
+        ELEMENT_SYMBOLS = {
+            0: 'n', 1: 'H', 2: 'He', 3: 'Li', 4: 'Be', 5: 'B', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 10: 'Ne',
+            11: 'Na', 12: 'Mg', 13: 'Al', 14: 'Si', 15: 'P', 16: 'S', 17: 'Cl', 18: 'Ar', 19: 'K', 20: 'Ca',
+            21: 'Sc', 22: 'Ti', 23: 'V', 24: 'Cr', 25: 'Mn', 26: 'Fe', 27: 'Co', 28: 'Ni', 29: 'Cu', 30: 'Zn',
+            31: 'Ga', 32: 'Ge', 33: 'As', 34: 'Se', 35: 'Br', 36: 'Kr', 37: 'Rb', 38: 'Sr', 39: 'Y', 40: 'Zr',
+            41: 'Nb', 42: 'Mo', 43: 'Tc', 44: 'Ru', 45: 'Rh', 46: 'Pd', 47: 'Ag', 48: 'Cd', 49: 'In', 50: 'Sn',
+            51: 'Sb', 52: 'Te', 53: 'I', 54: 'Xe', 55: 'Cs', 56: 'Ba', 57: 'La', 58: 'Ce', 59: 'Pr', 60: 'Nd',
+            61: 'Pm', 62: 'Sm', 63: 'Eu', 64: 'Gd', 65: 'Tb', 66: 'Dy', 67: 'Ho', 68: 'Er', 69: 'Tm', 70: 'Yb',
+            71: 'Lu', 72: 'Hf', 73: 'Ta', 74: 'W', 75: 'Re', 76: 'Os', 77: 'Ir', 78: 'Pt', 79: 'Au', 80: 'Hg',
+            81: 'Tl', 82: 'Pb', 83: 'Bi', 84: 'Po', 85: 'At', 86: 'Rn', 87: 'Fr', 88: 'Ra', 89: 'Ac', 90: 'Th',
+            91: 'Pa', 92: 'U', 93: 'Np', 94: 'Pu', 95: 'Am', 96: 'Cm', 97: 'Bk', 98: 'Cf', 99: 'Es', 100: 'Fm'
+        }
+        
         for result in all_results:
             za = result["ZA"]
             z = za // 1000
             a = za % 1000
             lis = result.get("LIS", 0)
+            mat = result.get("MAT", 0)
             halflife_s = result["T1/2"][0]
-            ELEMENT_SYMBOLS = {35: 'Br', 74: 'W'}
             element = ELEMENT_SYMBOLS.get(z, f'Z{z}')
             
+            level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
+            
             print()
-            print(f"Level {lis}: {element}-{a}, T½ = {halflife_s/60.0:.2f} min")
+            print(f"MAT={mat}, Level {lis}: {level_name}, T½ = {halflife_s/60.0:.2f} min")
             
             # Show B+/EC split
             bplus_br_pct = extract_bplus_branching(result)
