@@ -1051,20 +1051,120 @@ def print_energy_distribution_summary(all_results):
     print()
 
 
-def format_and_print_combined_table(all_results):
+def print_compact_summary_table(all_results):
+    """Print a compact summary table with essential fields only."""
+    
+    if not all_results:
+        print("No data to display")
+        return
+    
+    nuclides = {}
+    for result in all_results:
+        za = result["ZA"]
+        if za not in nuclides:
+            nuclides[za] = []
+        nuclides[za].append(result)
+    
+    print()
+    print("="*200)
+    print("COMPACT SUMMARY TABLE - ESSENTIAL DECAY DATA")
+    print("="*200)
+    print()
+    print(f"Total nuclides: {len(nuclides)}")
+    print(f"Total decay levels: {len(all_results)}")
+    print()
+    
+    # Compact header
+    print(f"{'Z':>3s}  {'A':>4s}  {'Element':>7s}  {'LIS':>3s}  {'Nuclide':>10s}  {'Half-life':>18s}  {'Q-value':>12s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
+    print(f"{'':>3s}  {'':>4s}  {'':>7s}  {'':>3s}  {'Name':>10s}  {'':>18s}  {'(keV)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
+    print("-"*200)
+    
+    for za in sorted(nuclides.keys()):
+        z = za // 1000
+        a = za % 1000
+        element = ATOMIC_SYMBOL.get(z, f'Z{z}')
+        
+        for result in nuclides[za]:
+            lis = result.get("LIS", 0)
+            mat = result.get("MAT", 0)
+            
+            # Nuclide name
+            if lis == 0:
+                nuclide_name = f"{element}-{a}"
+            elif lis == 1:
+                nuclide_name = f"{element}-{a}m"
+            else:
+                nuclide_name = f"{element}-{a}m{lis}"
+            
+            # Half-life
+            halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
+            halflife_str = format_halflife(halflife_s) if halflife_s > 0 else "STABLE"
+            
+            # Decay data
+            if result.get("modes"):
+                mode = result["modes"][0]
+                q_kev = mode["Q"][0] / 1000.0
+                rtyp = mode["RTYP"]
+                total_br = mode["BR"][0]
+                total_br_pct = total_br * 100.0 if total_br <= 1.0 else total_br
+                
+                bplus_br_pct = extract_bplus_branching(result)
+                ec_br_pct = total_br_pct - bplus_br_pct
+                
+                # Mean energies
+                mean_alpha = 0.0
+                mean_beta = 0.0
+                mean_gamma = 0.0
+                
+                if "spectra" in result and result["spectra"]:
+                    for spec in result["spectra"]:
+                        styp = spec["STYP"]
+                        er_av_kev = spec["ER_AV"][0] / 1000.0
+                        
+                        if styp == 0:
+                            mean_gamma = er_av_kev
+                        elif styp == 2:
+                            mean_beta = er_av_kev
+                        elif styp == 4:
+                            mean_alpha = er_av_kev
+            else:
+                q_kev = 0.0
+                bplus_br_pct = 0.0
+                ec_br_pct = 0.0
+                mean_alpha = 0.0
+                mean_beta = 0.0
+                mean_gamma = 0.0
+            
+            # Print compact row
+            print(f"{z:>3d}  {a:>4d}  {element:>7s}  {lis:>3d}  {nuclide_name:>10s}  {halflife_str:>18s}  {q_kev:>12.4e}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {mean_alpha:>12.4e}  {mean_beta:>12.4e}  {mean_gamma:>12.4e}  {mat:>5d}")
+    
+    print("-"*200)
+    print()
+    print("="*200)
+    print()
+
+
+def format_and_print_combined_table(all_results, compact_only=False):
     """Generate and print combined formatted table for all decay levels and nuclides."""
     
     if not all_results:
         print("No data to display")
         return
     
-    # First print ALL individual energies in detail
+    # First print compact summary table (essential data only)
+    print_compact_summary_table(all_results)
+    
+    # If compact only mode, stop here
+    if compact_only:
+        return
+    
+    # Then print ALL individual energies in detail
     print_all_energies(all_results)
     
     # Print energy distribution summary (all energies sorted)
     print_energy_distribution_summary(all_results)
     
-    # Then print summary table
+    # Then print comprehensive summary table
     nuclides = {}
     for result in all_results:
         za = result["ZA"]
@@ -1585,6 +1685,7 @@ if __name__ == "__main__":
     import os
     
     verbose = False
+    compact_only = False
     file_arg = None
     output_file = None
     
@@ -1593,6 +1694,8 @@ if __name__ == "__main__":
         arg = sys.argv[i]
         if arg in ['--verbose', '--full', '-v', '--all']:
             verbose = True
+        elif arg in ['--compact', '-c', '--summary']:
+            compact_only = True
         elif arg in ['--output', '-o']:
             if i + 1 < len(sys.argv):
                 output_file = sys.argv[i + 1]
@@ -1620,21 +1723,28 @@ if __name__ == "__main__":
         print()
         print("Usage:")
         print("  python3 JEFF_ENDF_parser.py <endf_file.endf>                    # All energies")
+        print("  python3 JEFF_ENDF_parser.py --compact <endf_file.endf>          # Compact table only")
         print("  python3 JEFF_ENDF_parser.py --verbose <endf_file.endf>          # + raw data")
         print("  python3 JEFF_ENDF_parser.py -o output.txt <endf_file.endf>      # Save to file")
-        print("  python3 JEFF_ENDF_parser.py --verbose -o out.txt <file.endf>    # Full details")
         print()
         print("Options:")
+        print("  --compact, -c, --summary        Show only compact summary table (no detailed energies)")
         print("  --verbose, -v, --full, --all    Show raw ENDF records and extra metadata")
         print("  --output, -o <filename>         Save output to specified file")
         print()
         print("Examples:")
         print("  python3 JEFF_ENDF_parser.py jeff-40-radioactive.endf")
+        print("  python3 JEFF_ENDF_parser.py --compact -o summary.txt jeff-40-radioactive.endf")
         print("  python3 JEFF_ENDF_parser.py --verbose uranium_decay.endf")
         print("  python3 JEFF_ENDF_parser.py -o analysis.txt jeff-40-radioactive.endf")
-        print("  python3 JEFF_ENDF_parser.py --verbose -o full_data.txt jeff-40-radioactive.endf")
         print()
-        print("Output includes:")
+        print("Output Modes:")
+        print("  --compact : Clean summary table (Z, A, LIS, half-life, Q-value, branching, mean energies)")
+        print("  (default) : Compact table + ALL individual transition energies")
+        print("  --verbose : Everything + raw ENDF records and metadata")
+        print()
+        print("Data included:")
+        print("  • Compact summary table with essential decay parameters")
         print("  • ALL discrete transition energies (every beta+, gamma, X-ray, Auger)")
         print("  • Complete continuous energy spectra")
         print("  • Energy-sorted distribution tables")
@@ -1742,15 +1852,17 @@ if __name__ == "__main__":
                 sys.stdout = f
                 
                 print(f"Reading ENDF data from: {input_file}")
-                if verbose:
+                if compact_only:
+                    print("(Compact mode: showing summary table only)")
+                elif verbose:
                     print("(Verbose mode: showing ALL energy details with raw values)")
                 else:
                     print("(Standard mode: showing ALL individual energies)")
                 print(f"Found {len(all_results)} decay state(s)")
                 print()
                 
-                # ALWAYS show ALL individual energies (not just means)
-                format_and_print_combined_table(all_results)
+                # Print tables based on mode
+                format_and_print_combined_table(all_results, compact_only=compact_only)
                 
                 # In verbose mode, add even more detail with raw values
                 if verbose:
