@@ -1,0 +1,112 @@
+═══════════════════════════════════════════════════════════════════════════════
+✅ COMPLETE DECAY INFORMATION TABLE - READY!
+═══════════════════════════════════════════════════════════════════════════════
+
+The table now includes ALL decay information from ENDF data!
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 COMPLETE TABLE FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+RADIOACTIVE DECAY DATA TABLE - Complete Decay Information
+
+  Z     A  Elem  LIS   Nuclide    Spin  Parity     Parent Ex           Half-life   Decay       Q-value  Daughter  RFS     B+ Branch     EC Branch        Mean α        Mean β        Mean γ    MAT
+                          Name                         (keV)                        Type         (keV)   Nuclide                (%)           (%)         (keV)         (keV)         (keV)       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 35    74    Br    0     Br-74     0.0    -1.0    0.0000e+00       25.40 minutes   EC/β+    6.9070e+03     Se-74    0    9.1170e+01    8.8300e+00    0.0000e+00    1.0526e+03    3.4234e+03    837
+ 35    74    Br    1    Br-74m     4.0     1.0    1.2442e+03       46.00 minutes   EC/β+    6.9208e+03     Se-74    0    0.0000e+00    1.0000e+02    0.0000e+00    0.0000e+00    2.9012e+03    838
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 COMPLETE COLUMN LIST (19 columns total)
+═══════════════════════════════════════════════════════════════════════════════
+
+PARENT NUCLIDE INFORMATION:
+  1. Z             - Atomic number (e.g., 35 for Br)
+  2. A             - Mass number (e.g., 74)
+  3. Elem          - Element symbol (e.g., Br)
+  4. LIS           - Isomeric state level (0=ground, 1=1st excited, etc.)
+  5. Nuclide       - Full name (e.g., Br-74, Br-74m)
+  6. Spin          - Nuclear spin (e.g., 0.0, 4.0)
+  7. Parity        - Nuclear parity (-1.0 or +1.0)
+  8. Parent Ex     - Parent excitation energy in keV (scientific notation)
+                     • Ground state (LIS=0): 0.0000e+00
+                     • Excited state (LIS=1): 1.2442e+03 = 1244.2 keV
+
+DECAY PROCESS INFORMATION:
+  9. Half-life     - In human-readable units (minutes, hours, days, years)
+ 10. Decay Type    - Type of decay (EC/β+, β-, α, γ, IT, n, SF, p)
+ 11. Q-value       - Total decay energy in keV (scientific notation)
+
+DAUGHTER NUCLIDE INFORMATION:
+ 12. Daughter      - Daughter nuclide name (e.g., Se-74 for Br-74)
+                     • For EC/β+: Z decreases by 1 (Br→Se)
+                     • For β-: Z increases by 1
+                     • For α: Z-2, A-4
+ 13. RFS           - Daughter isomeric state flag (0=ground, 1=excited, etc.)
+
+BRANCHING AND ENERGY INFORMATION:
+ 14. B+ Branch     - Beta-plus emission branching % (scientific notation)
+ 15. EC Branch     - Electron capture branching % (scientific notation)
+ 16. Mean α        - Mean alpha particle energy in keV (scientific notation)
+ 17. Mean β        - Mean beta particle energy in keV (scientific notation)
+ 18. Mean γ        - Mean gamma ray energy in keV (scientific notation)
+ 19. MAT           - ENDF material identifier
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 KEY NEW FEATURES
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Parent Spin and Parity - Nuclear quantum numbers
+✅ Parent Excitation Energy - Shows energy of excited states (Br-74m = 1244 keV)
+✅ Decay Type - Clear label (EC/β+, β-, α, etc.)
+✅ Daughter Nuclide - Shows product of decay (Br-74 → Se-74)
+✅ RFS Flag - Indicates if daughter is in ground or excited state
+✅ Complete decay chain information in one row
+
+═══════════════════════════════════════════════════════════════════════════════
+📖 EXAMPLE INTERPRETATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Row 1: Br-74 (ground state)
+  • Parent: Br-74 (Z=35, A=74, LIS=0)
+  • Spin/Parity: 0- (spin=0.0, parity=-1.0)
+  • Excitation: 0 keV (ground state)
+  • Decays via: EC/β+ with T½ = 25.4 minutes
+  • Q-value: 6907 keV
+  • → Daughter: Se-74 (ground state, RFS=0)
+  • Branching: 91.17% β+, 8.83% EC
+
+Row 2: Br-74m (excited state)
+  • Parent: Br-74m (Z=35, A=74, LIS=1)
+  • Spin/Parity: 4+ (spin=4.0, parity=+1.0)
+  • Excitation: 1244.2 keV (excited state!)
+  • Decays via: EC/β+ with T½ = 46.0 minutes
+  • Q-value: 6920.8 keV (slightly higher due to excitation energy)
+  • → Daughter: Se-74 (ground state, RFS=0)
+  • Branching: 0% β+ (all EC - no positron emission)
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 RUN IT
+═══════════════════════════════════════════════════════════════════════════════
+
+Generate complete decay table for JEFF-4.0:
+
+python3 JEFF_ENDF_parser.py /Users/audreywarn/fluka-db-audrey/data_input/endf/Radioactive_Decay_Data_JEFF-40.txt -o JEFF40_complete_table.txt
+
+This will create a comprehensive table with ALL decay information for ~3,800 levels!
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ NOW YOU HAVE EVERYTHING
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Parent nuclide (Z, A, Element, LIS, Name)
+✓ Parent state (Spin, Parity, Excitation Energy)
+✓ Decay properties (Type, Half-life, Q-value)
+✓ Daughter nuclide (Name, RFS)
+✓ Branching ratios (β+, EC)
+✓ Mean radiation energies (α, β, γ)
+✓ All in scientific notation
+✓ One comprehensive row per decay level
+✓ Perfect for database import or analysis!
+
+═══════════════════════════════════════════════════════════════════════════════

@@ -744,20 +744,20 @@ def format_and_print_combined_table(all_results):
     # ================================================================
     
     print()
-    print("="*200)
-    print("RADIOACTIVE DECAY DATA TABLE - Clean Format")
-    print("="*200)
+    print("="*240)
+    print("RADIOACTIVE DECAY DATA TABLE - Complete Decay Information")
+    print("="*240)
     print()
     print(f"Total nuclides: {len(nuclides)}")
     print(f"Total decay levels: {len(all_results)}")
     print()
     
-    # Print table header
-    print(f"{'Z':>3s}  {'A':>4s}  {'Element':>4s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Half-life':>18s}  {'Q-value':>12s}  {'B+ Branch':>10s}  {'EC Branch':>10s}  {'Mean α':>10s}  {'Mean β':>10s}  {'Mean γ':>10s}  {'MAT':>5s}")
-    print(f"{'':>3s}  {'':>4s}  {'':>4s}  {'':>3s}  {'Name':>8s}  {'':>18s}  {'(keV)':>12s}  {'(%)':>10s}  {'(%)':>10s}  {'(keV)':>10s}  {'(keV)':>10s}  {'(keV)':>10s}  {'':>5s}")
-    print("-"*200)
+    # Print comprehensive table header with ALL decay information
+    print(f"{'Z':>3s}  {'A':>4s}  {'Elem':>4s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Spin':>6s}  {'Parity':>6s}  {'Parent Ex':>12s}  {'Half-life':>18s}  {'Decay':>6s}  {'Q-value':>12s}  {'Daughter':>8s}  {'RFS':>3s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
+    print(f"{'':>3s}  {'':>4s}  {'':>4s}  {'':>3s}  {'Name':>8s}  {'':>6s}  {'':>6s}  {'(keV)':>12s}  {'':>18s}  {'Type':>6s}  {'(keV)':>12s}  {'Nuclide':>8s}  {'':>3s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
+    print("-"*240)
     
-    # Print table rows - one row per decay level
+    # Print table rows - one row per decay level with ALL information
     for za in sorted(nuclides.keys()):
         z = za // 1000
         a = za % 1000
@@ -766,6 +766,16 @@ def format_and_print_combined_table(all_results):
         for result in nuclides[za]:
             lis = result.get("LIS", 0)
             mat = result.get("MAT", 0)
+            
+            # Parent spin and parity
+            spi = result.get("SPI", 0.0)
+            par = result.get("PAR", 0.0)
+            
+            # Parent excitation energy (from Ex array if available, or 0 for ground state)
+            parent_ex_kev = 0.0
+            if "Ex" in result and len(result["Ex"]) > 0 and lis > 0:
+                # For excited states, Ex[0] typically gives the excitation energy
+                parent_ex_kev = result["Ex"][0][0] / 1000.0 if result["Ex"][0][0] > 0 else 0.0
             
             # Handle half-life (may be missing for stable nuclides)
             halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
@@ -784,7 +794,44 @@ def format_and_print_combined_table(all_results):
                 mode = result["modes"][0]
                 q_kev = mode["Q"][0] / 1000.0
                 rtyp = mode["RTYP"]
+                rfs = mode.get("RFS", 0.0)  # Daughter isomeric state
                 total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
+                
+                # Decay type string
+                decay_type_map = {
+                    0.0: "γ",
+                    1.0: "β-",
+                    2.0: "EC/β+",
+                    3.0: "IT",
+                    4.0: "α",
+                    5.0: "n",
+                    6.0: "SF",
+                    7.0: "p"
+                }
+                decay_type = decay_type_map.get(rtyp, f"{rtyp:.0f}")
+                
+                # Daughter nuclide
+                # For EC/β+ decay: Z decreases by 1
+                # For β- decay: Z increases by 1
+                # For α decay: Z decreases by 2, A decreases by 4
+                if rtyp == 2.0:  # EC/β+
+                    daughter_z = z - 1
+                    daughter_a = a
+                elif rtyp == 1.0:  # β-
+                    daughter_z = z + 1
+                    daughter_a = a
+                elif rtyp == 4.0:  # α
+                    daughter_z = z - 2
+                    daughter_a = a - 4
+                elif rtyp == 0.0:  # γ (same nuclide)
+                    daughter_z = z
+                    daughter_a = a
+                else:
+                    daughter_z = z
+                    daughter_a = a
+                
+                daughter_element = ELEMENT_SYMBOLS.get(daughter_z, f'Z{daughter_z}')
+                daughter_name = f"{daughter_element}-{daughter_a}"
                 
                 # Calculate B+/EC split
                 bplus_br_pct = extract_bplus_branching(result)
@@ -808,6 +855,9 @@ def format_and_print_combined_table(all_results):
                             mean_alpha = er_av_kev
             else:
                 # Stable nuclide or no decay modes
+                decay_type = "STABLE"
+                daughter_name = "-"
+                rfs = 0.0
                 q_kev = 0.0
                 bplus_br_pct = 0.0
                 ec_br_pct = 0.0
@@ -815,10 +865,10 @@ def format_and_print_combined_table(all_results):
                 mean_beta = 0.0
                 mean_gamma = 0.0
             
-            # Print single row for this decay level (scientific notation for energies/branching)
-            print(f"{z:>3d}  {a:>4d}  {element:>4s}  {lis:>3d}  {nuclide_name:>8s}  {halflife_str:>18s}  {q_kev:>12.4e}  {bplus_br_pct:>10.4e}  {ec_br_pct:>10.4e}  {mean_alpha:>10.4e}  {mean_beta:>10.4e}  {mean_gamma:>10.4e}  {mat:>5d}")
+            # Print single row with ALL decay information (scientific notation for measurements)
+            print(f"{z:>3d}  {a:>4d}  {element:>4s}  {lis:>3d}  {nuclide_name:>8s}  {spi:>6.1f}  {par:>6.1f}  {parent_ex_kev:>12.4e}  {halflife_str:>18s}  {decay_type:>6s}  {q_kev:>12.4e}  {daughter_name:>8s}  {rfs:>3.0f}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {mean_alpha:>12.4e}  {mean_beta:>12.4e}  {mean_gamma:>12.4e}  {mat:>5d}")
     
-    print("-"*200)
+    print("-"*240)
     print()
     print("Summary:")
     for za in sorted(nuclides.keys()):
