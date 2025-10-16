@@ -798,12 +798,49 @@ def format_and_print_table(parsed_data):
 
 
 if __name__ == "__main__":
-    parser = ENDFNumericDecayParser()
-    parser.load_text(ENDF_DATA)
+    import sys
     
-    if not parser._scan_to_mf_mt(8, 457):
-        print("ERROR: No MF=8 MT=457 section found")
-        exit(1)
-    
-    result = parser._parse_mf8_mt457()
-    format_and_print_table(result)
+    # Check if file argument provided
+    if len(sys.argv) > 1:
+        # Read from file
+        input_file = sys.argv[1]
+        print(f"Reading ENDF data from: {input_file}")
+        print()
+        
+        try:
+            parser = ENDFNumericDecayParser()
+            parser.load_file(input_file)
+            
+            if not parser._scan_to_mf_mt(8, 457):
+                print("ERROR: No MF=8 MT=457 section found in file")
+                print("This file may not contain radioactive decay data.")
+                exit(1)
+            
+            result = parser._parse_mf8_mt457()
+            format_and_print_table(result)
+            
+        except FileNotFoundError:
+            print(f"ERROR: File not found: {input_file}")
+            print()
+            print("Usage: python3 run_br74_parser.py <endf_file.txt>")
+            exit(1)
+        except Exception as e:
+            print(f"ERROR: Failed to parse file: {e}")
+            import traceback
+            traceback.print_exc()
+            exit(1)
+    else:
+        # Use embedded example data
+        print("No file specified, using embedded Br-74 example data")
+        print("Usage: python3 run_br74_parser.py <endf_file.txt>")
+        print()
+        
+        parser = ENDFNumericDecayParser()
+        parser.load_text(ENDF_DATA)
+        
+        if not parser._scan_to_mf_mt(8, 457):
+            print("ERROR: No MF=8 MT=457 section found")
+            exit(1)
+        
+        result = parser._parse_mf8_mt457()
+        format_and_print_table(result)
