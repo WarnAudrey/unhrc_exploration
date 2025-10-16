@@ -1066,18 +1066,18 @@ def print_compact_summary_table(all_results):
         nuclides[za].append(result)
     
     print()
-    print("="*200)
+    print("="*165)
     print("COMPACT SUMMARY TABLE - ESSENTIAL DECAY DATA")
-    print("="*200)
+    print("="*165)
     print()
     print(f"Total nuclides: {len(nuclides)}")
     print(f"Total decay levels: {len(all_results)}")
     print()
     
-    # Compact header
-    print(f"{'Z':>3s}  {'A':>4s}  {'Element':>7s}  {'LIS':>3s}  {'Nuclide':>10s}  {'Half-life':>18s}  {'Q-value':>12s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
-    print(f"{'':>3s}  {'':>4s}  {'':>7s}  {'':>3s}  {'Name':>10s}  {'':>18s}  {'(keV)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
-    print("-"*200)
+    # Compact header - exact formatting to match example
+    print(f"{'Z':>3s}  {'A':>5s}  {'Element':>5s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Half-life':>18s}  {'Q-value':>12s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
+    print(f"{'':>3s}  {'':>5s}  {'':>5s}  {'':>3s}  {'Name':>8s}  {'':>18s}  {'(keV)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
+    print("-"*165)
     
     for za in sorted(nuclides.keys()):
         z = za // 1000
@@ -1135,12 +1135,12 @@ def print_compact_summary_table(all_results):
                 mean_beta = 0.0
                 mean_gamma = 0.0
             
-            # Print compact row
-            print(f"{z:>3d}  {a:>4d}  {element:>7s}  {lis:>3d}  {nuclide_name:>10s}  {halflife_str:>18s}  {q_kev:>12.4e}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {mean_alpha:>12.4e}  {mean_beta:>12.4e}  {mean_gamma:>12.4e}  {mat:>5d}")
+            # Print compact row - exact formatting to match example
+            print(f"{z:>3d}  {a:>5d}  {element:>5s}  {lis:>3d}  {nuclide_name:>8s}  {halflife_str:>18s}  {q_kev:>12.4e}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {mean_alpha:>12.4e}  {mean_beta:>12.4e}  {mean_gamma:>12.4e}  {mat:>5d}")
     
-    print("-"*200)
+    print("-"*165)
     print()
-    print("="*200)
+    print("="*165)
     print()
 
 
