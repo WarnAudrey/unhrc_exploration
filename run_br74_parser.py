@@ -519,16 +519,28 @@ def print_detailed_data(parsed_data):
 
 if __name__ == "__main__":
     import sys
+    import os
     
-    # Check for verbose/full flag
+    # Check for verbose/full flag and output file
     verbose = False
     file_arg = None
+    output_file = None
     
-    for arg in sys.argv[1:]:
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
         if arg in ['--verbose', '--full', '-v', '--all']:
             verbose = True
+        elif arg in ['--output', '-o']:
+            if i + 1 < len(sys.argv):
+                output_file = sys.argv[i + 1]
+                i += 1
+            else:
+                print("ERROR: --output requires a filename argument")
+                exit(1)
         elif not arg.startswith('-'):
             file_arg = arg
+        i += 1
     
     # File argument is REQUIRED
     if not file_arg:
@@ -538,25 +550,30 @@ if __name__ == "__main__":
         print("="*80)
         print()
         print("Usage:")
-        print("  python3 run_br74_parser.py <endf_file.txt>              # Summary view")
-        print("  python3 run_br74_parser.py --verbose <endf_file.txt>    # Full details")
+        print("  python3 run_br74_parser.py <endf_file.txt>                    # Summary view")
+        print("  python3 run_br74_parser.py --verbose <endf_file.txt>          # Full details")
+        print("  python3 run_br74_parser.py -o output.txt <endf_file.txt>      # Save to file")
+        print("  python3 run_br74_parser.py --verbose -o out.txt <file.txt>    # Full details to file")
         print()
         print("Options:")
         print("  --verbose, -v, --full, --all    Show all transitions and detailed data")
+        print("  --output, -o <filename>         Save output to specified file")
         print()
         print("Example:")
         print("  python3 run_br74_parser.py br74_endf_test.txt")
         print("  python3 run_br74_parser.py --verbose br74_endf_test.txt")
+        print("  python3 run_br74_parser.py --verbose -o br74_output.txt br74_endf_test.txt")
         print()
         print("="*80)
         exit(1)
     
+    # Auto-generate output filename if not specified
+    if output_file is None:
+        base_name = os.path.splitext(os.path.basename(file_arg))[0]
+        output_file = f"{base_name}_parsed_output.txt"
+    
     # Read from file
     input_file = file_arg
-    print(f"Reading ENDF data from: {input_file}")
-    if verbose:
-        print("(Verbose mode: showing all detailed transitions)")
-    print()
     
     try:
         parser = ENDFNumericDecayParser()
@@ -568,10 +585,53 @@ if __name__ == "__main__":
             exit(1)
         
         result = parser._parse_mf8_mt457()
-        format_and_print_table(result)
         
+        # Redirect output to file
+        original_stdout = sys.stdout
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            sys.stdout = f
+            
+            print(f"Reading ENDF data from: {input_file}")
+            if verbose:
+                print("(Verbose mode: showing all detailed transitions)")
+            print()
+            
+            format_and_print_table(result)
+            
+            if verbose:
+                print_detailed_data(result)
+        
+        # Restore stdout
+        sys.stdout = original_stdout
+        
+        # Print confirmation to console
+        print(f"✓ Successfully parsed: {input_file}")
+        print(f"✓ Output saved to: {output_file}")
         if verbose:
-            print_detailed_data(result)
+            print(f"✓ Mode: Full details (all transitions)")
+        else:
+            print(f"✓ Mode: Summary view")
+        
+        # Show brief summary to console
+        za = result["ZA"]
+        z = za // 1000
+        a = za % 1000
+        halflife_s = result["T1/2"][0]
+        ELEMENT_SYMBOLS = {35: 'Br', 74: 'W'}
+        element = ELEMENT_SYMBOLS.get(z, f'Z{z}')
+        
+        print()
+        print(f"Summary: {element}-{a}, T½ = {halflife_s/60.0:.2f} min")
+        
+        # Show B+/EC split
+        bplus_br_pct = extract_bplus_branching(result)
+        mode = result["modes"][0]
+        total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
+        ec_br_pct = total_br_pct - bplus_br_pct
+        
+        print(f"  β+ Branching: {bplus_br_pct:.2f}%")
+        print(f"  EC Branching: {ec_br_pct:.2f}%")
         
     except FileNotFoundError:
         print(f"ERROR: File not found: {input_file}")
