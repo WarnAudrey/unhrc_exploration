@@ -1,0 +1,78 @@
+═══════════════════════════════════════════════════════════════════════════════
+✅ CLEAN TABLE FORMAT - READY!
+═══════════════════════════════════════════════════════════════════════════════
+
+The parser now outputs a CLEAN, READABLE TABLE with all information in 
+easy-to-scan columns!
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 TABLE FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+  Z     A  Element  LIS   Nuclide           Half-life       Q-value   B+ Branch   EC Branch      Mean α      Mean β      Mean γ    MAT
+                          Name                             (keV)         (%)         (%)       (keV)       (keV)       (keV)       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 35    74    Br    0     Br-74       25.40 minutes       6907.00       91.17        8.83        0.00     1052.57     3423.39    837
+ 35    74    Br    1    Br-74m       46.00 minutes       6920.80        0.00      100.00        0.00        0.00     2901.21    838
+
+COLUMNS:
+--------
+1. Z          - Atomic number (e.g., 35 for Bromine)
+2. A          - Mass number (e.g., 74)
+3. Element    - Element symbol (e.g., Br)
+4. LIS        - Isomeric state level (0=ground, 1=first excited, etc.)
+5. Nuclide    - Full name (e.g., Br-74, Br-74m, Br-74m2)
+6. Half-life  - In human-readable units (minutes, hours, days, years)
+7. Q-value    - Total decay energy in keV
+8. B+ Branch  - Beta-plus emission branching ratio (%)
+9. EC Branch  - Electron capture branching ratio (%)
+10. Mean α    - Mean alpha particle energy (keV)
+11. Mean β    - Mean beta particle energy (keV)
+12. Mean γ    - Mean gamma ray energy (keV)
+13. MAT       - ENDF material identifier
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 KEY FEATURES
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Clean, aligned columns - easy to read
+✅ Z and A clearly labeled - easy to find specific nuclides
+✅ Human-readable half-lives - "25.40 minutes" instead of "1524 seconds"
+✅ Nuclide names - shows ground state (Br-74) vs excited (Br-74m)
+✅ All decay info in one row - no need to scan multiple rows
+✅ Both B+ and EC branching shown
+✅ Mean energies for all radiation types
+✅ MAT number included for reference back to ENDF file
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 EXAMPLE OUTPUT (Br-74 with both levels)
+═══════════════════════════════════════════════════════════════════════════════
+
+RADIOACTIVE DECAY DATA TABLE - Clean Format
+
+Total nuclides: 1
+Total decay levels: 2
+
+  Z     A  Element  LIS   Nuclide           Half-life       Q-value   B+ Branch   EC Branch      Mean α      Mean β      Mean γ    MAT
+                          Name                             (keV)         (%)         (%)       (keV)       (keV)       (keV)       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 35    74    Br    0     Br-74       25.40 minutes       6907.00       91.17        8.83        0.00     1052.57     3423.39    837
+ 35    74    Br    1    Br-74m       46.00 minutes       6920.80        0.00      100.00        0.00        0.00     2901.21    838
+
+This shows:
+• Br-74 ground state (LIS=0): 25.4 min half-life, 91.17% β+, 8.83% EC
+• Br-74 excited state (LIS=1): 46 min half-life, 100% EC (no β+)
+
+═══════════════════════════════════════════════════════════════════════════════
+📝 RUN IT NOW
+═══════════════════════════════════════════════════════════════════════════════
+
+python3 JEFF_ENDF_parser.py /Users/audreywarn/fluka-db-audrey/data_input/endf/Radioactive_Decay_Data_JEFF-40.txt -o JEFF40_clean_table.txt
+
+This will create a clean table with ALL ~3800 decay levels from JEFF-4.0!
+
+For verbose mode (includes all transitions):
+
+python3 JEFF_ENDF_parser.py --verbose /Users/audreywarn/fluka-db-audrey/data_input/endf/Radioactive_Decay_Data_JEFF-40.txt -o JEFF40_verbose.txt
+
+═══════════════════════════════════════════════════════════════════════════════

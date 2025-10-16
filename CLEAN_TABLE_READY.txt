@@ -1,0 +1,60 @@
+═══════════════════════════════════════════════════════════════════════════════
+✅ CLEAN TABLE OUTPUT - COMPLETE!
+═══════════════════════════════════════════════════════════════════════════════
+
+The parser now outputs ONLY the clean, readable table with complete information!
+
+No more verbose level checking output - just the data table you need.
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 EXAMPLE OUTPUT
+═══════════════════════════════════════════════════════════════════════════════
+
+RADIOACTIVE DECAY DATA TABLE - Clean Format
+
+Total nuclides: 1
+Total decay levels: 2
+
+  Z     A  Element  LIS   Nuclide           Half-life       Q-value   B+ Branch   EC Branch      Mean α      Mean β      Mean γ    MAT
+                          Name                             (keV)         (%)         (%)       (keV)       (keV)       (keV)       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 35    74    Br    0     Br-74       25.40 minutes       6907.00       91.17        8.83        0.00     1052.57     3423.39    837
+ 35    74    Br    1    Br-74m       46.00 minutes       6920.80        0.00      100.00        0.00        0.00     2901.21    838
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 WHAT YOU GET
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Clean table header with column names
+✅ Complete data for each decay level:
+   • Z (atomic number)
+   • A (mass number)
+   • Element symbol
+   • LIS (isomeric state level)
+   • Nuclide name (Br-74, Br-74m, etc.)
+   • Half-life in readable format
+   • Q-value (keV)
+   • β+ branching (%)
+   • EC branching (%)
+   • Mean α energy (keV)
+   • Mean β energy (keV)
+   • Mean γ energy (keV)
+   • MAT number
+
+✅ One row per decay level - easy to scan
+✅ All columns aligned - easy to read
+✅ Sorted by Z, then A, then LIS
+✅ Works with full JEFF-4.0 database (~3800 rows)
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 RUN IT
+═══════════════════════════════════════════════════════════════════════════════
+
+For summary table (clean, compact):
+  python3 JEFF_ENDF_parser.py /path/to/JEFF-40.txt -o JEFF40_table.txt
+
+For verbose mode (includes all transition details):
+  python3 JEFF_ENDF_parser.py --verbose /path/to/JEFF-40.txt -o JEFF40_verbose.txt
+
+═══════════════════════════════════════════════════════════════════════════════

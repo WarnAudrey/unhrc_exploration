@@ -1,0 +1,133 @@
+═══════════════════════════════════════════════════════════════════════════════
+📊 ENERGY DATA IN ENDF FILES - COMPLETE BREAKDOWN
+═══════════════════════════════════════════════════════════════════════════════
+
+NO! Mean energies are NOT the only energies in ENDF files!
+
+ENDF contains MUCH more detailed energy information:
+
+═══════════════════════════════════════════════════════════════════════════════
+🔬 ALL ENERGY INFORMATION AVAILABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+1. DISCRETE TRANSITION ENERGIES (Individual lines)
+   ================================================
+   For Gamma Rays (STYP=0):
+     • Individual gamma ray energies (e.g., 218.9, 615.1, 634.2, 634.8, ... keV)
+     • Each gamma has:
+       - Specific energy with uncertainty
+       - Absolute intensity (photons per 100 decays)
+       - Relative intensity
+       - Internal conversion coefficients (ICC total, K-shell, L-shell)
+   
+   For Beta+ Particles (STYP=2):
+     • Individual beta+ endpoint energies (e.g., 1348.4, 1397.6, 1505.0, ... keV)
+     • Each beta+ transition has:
+       - Endpoint energy with uncertainty
+       - Average energy with uncertainty
+       - Emission intensity (%)
+   
+   For X-rays (STYP=8):
+     • Individual X-ray line energies
+     • Intensities
+   
+   For Auger Electrons (STYP=9):
+     • Individual Auger electron energies
+     • Intensities
+
+2. MEAN ENERGIES (Summary statistics)
+   ===================================
+   • Mean alpha energy (average over all α emissions)
+   • Mean beta energy (average over all β emissions)
+   • Mean gamma energy (average over all γ emissions)
+   
+   → These are what's currently shown in your summary table!
+
+3. Q-VALUE (Total decay energy)
+   ============================
+   • Total energy released in decay
+   • Already shown in your table
+
+4. EXCITATION ENERGIES
+   ===================
+   • Parent excitation energy (for excited states like Br-74m)
+   • Daughter excitation energies (if decay goes to excited state)
+   • Already shown in your table (Parent Ex column)
+
+5. CONTINUOUS SPECTRA (Energy distributions)
+   =========================================
+   • Beta continuum (energy distribution function)
+   • Stored as tabulated probability vs energy
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 EXAMPLE: Br-74 DISCRETE ENERGIES
+═══════════════════════════════════════════════════════════════════════════════
+
+GAMMA RAYS (77 individual transitions!):
+   #    Energy (keV)     Intensity (%)
+   1        218.9          18.076
+   2        615.1           0.256
+   3        634.2          14.102
+   4        634.8          64.100  ← Strongest line!
+   5        871.4           0.256
+   ... (72 more gamma rays)
+
+BETA+ PARTICLES (20 individual transitions!):
+   #    Endpoint (keV)   Avg Energy (keV)   Intensity (%)
+   1        1348.4           589.0             1.59
+   2        1397.6           611.0             1.02
+   3        1505.0           660.0             4.50
+   ... (17 more beta+ lines)
+
+Mean γ = 3423.4 keV  ← This is the AVERAGE of all 77 gamma rays!
+Mean β = 1052.6 keV  ← This is the AVERAGE of all 20 beta+ particles!
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 WHAT YOU'RE CURRENTLY SHOWING
+═══════════════════════════════════════════════════════════════════════════════
+
+Your SUMMARY table shows:
+  ✓ Mean α, β, γ energies (averages)
+  ✓ Q-value (total decay energy)
+  ✓ Parent excitation energy
+  ✓ Branching ratios
+
+Your VERBOSE mode shows:
+  ✓ ALL individual gamma ray energies and intensities
+  ✓ ALL individual beta+ energies and intensities
+  ✓ ALL X-ray energies and intensities
+  ✓ ALL Auger electron energies and intensities
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 RECOMMENDATION
+═══════════════════════════════════════════════════════════════════════════════
+
+For SUMMARY table (what you have now):
+  → Keep mean energies - good for quick overview
+  → Already shows Q-value and excitation energy
+
+For DETAILED analysis:
+  → Use --verbose flag to get ALL discrete transitions
+  → This gives you every single gamma ray, beta+ particle, etc.
+
+Example:
+  python3 JEFF_ENDF_parser.py --verbose JEFF-40.txt -o detailed.txt
+
+This will give you:
+  • Summary table (mean energies, Q-values, etc.)
+  • Plus detailed sections with ALL individual transitions
+
+═══════════════════════════════════════════════════════════════════════════════
+🔧 WANT TO ADD DISCRETE ENERGIES TO SUMMARY TABLE?
+═══════════════════════════════════════════════════════════════════════════════
+
+Options:
+1. Add "# of γ lines" column (e.g., "77 lines")
+2. Add "Strongest γ" column (e.g., "634.8 keV at 64.1%")
+3. Add "Energy range" columns (e.g., "218.9 - 6907 keV")
+
+Would you like me to add any of these to the summary table?
+
+Or keep summary table compact and use verbose mode for detailed energies?
+
+═══════════════════════════════════════════════════════════════════════════════
