@@ -1,0 +1,73 @@
+================================================================================
+ENDF-6 DECAY PARSER - LEVEL VERIFICATION FEATURE TEST SUMMARY
+================================================================================
+
+✅ FEATURE: Automatic Level Completeness Check
+
+The parser now automatically verifies all decay levels for each nuclide and:
+  1. Lists all levels found (LIS values)
+  2. Shows corresponding MAT numbers
+  3. Checks for gaps in the level sequence
+  4. Reports missing levels if detected
+  5. Displays half-life for each level
+
+================================================================================
+TEST 1: COMPLETE LEVEL SEQUENCE (Br-74 with 2 levels)
+================================================================================
+
+Input: br74_both_states_FULL.txt
+Found: 2 decay levels
+
+RESULT:
+  Br-74 (ZA=35074):
+    Found 2 decay level(s): LIS = [0, 1]
+    Corresponding MAT numbers: [837, 838]
+    ✓ Level sequence is complete (LIS 0 through 1)
+      Level 0 (MAT=837): Br-74, T½ = 25.40 minutes     [Ground State]
+      Level 1 (MAT=838): Br-74m, T½ = 46.00 minutes    [Excited State]
+
+STATUS: ✓ PASS - All levels present, no gaps detected
+
+================================================================================
+TEST 2: SINGLE LEVEL NUCLIDE (Br-74 ground state only)
+================================================================================
+
+Input: br74_endf_test.txt
+Found: 1 decay level
+
+RESULT:
+  Br-74 (ZA=35074):
+    Found 1 decay level(s): LIS = [0]
+    Corresponding MAT numbers: [837]
+    ✓ Level sequence is complete (LIS 0 through 0)
+      Level 0 (MAT=837): Br-74, T½ = 25.40 minutes
+
+STATUS: ✓ PASS - Single level correctly identified
+
+================================================================================
+FEATURE CAPABILITIES:
+================================================================================
+
+✓ Universal MAT support (works with ANY material number)
+✓ Automatic multi-level detection
+✓ Level sequence validation
+✓ Gap detection (warns if LIS levels are not consecutive)
+✓ Human-readable half-life formatting
+✓ Works with incomplete/partial ENDF data
+✓ Fault-tolerant parsing (continues even with missing records)
+
+================================================================================
+EXAMPLE: MISSING LEVEL WARNING
+================================================================================
+
+If the file contained LIS = [0, 2] (missing level 1), output would show:
+
+  Br-74 (ZA=35074):
+    Found 2 decay level(s): LIS = [0, 2]
+    Corresponding MAT numbers: [837, 839]
+    ⚠ WARNING: Possible missing levels - expected [0, 1], found [0, 2]
+              Missing LIS: [1]
+      Level 0 (MAT=837): Br-74, T½ = 25.40 minutes
+      Level 2 (MAT=839): Br-74m2, T½ = 13.50 seconds
+
+================================================================================
