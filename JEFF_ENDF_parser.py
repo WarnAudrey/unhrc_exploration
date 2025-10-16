@@ -51,8 +51,25 @@ ATOMIC_SYMBOL = {
 
 
 class Tabulated1D:
-    """Tabulated function with FIXED interpolation."""
+    """
+    Tabulated1D: One-dimensional tabulated function with ENDF-6 interpolation support.
+    
+    This class implements the TAB1 record type from ENDF-6 format, which represents
+    a 1D function as a series of (x,y) points with interpolation rules between them.
+    
+    ENDF-6 supports multiple interpolation schemes:
+        1 = Histogram (constant y in each interval)
+        2 = Linear-linear (straight line between points)
+        3 = Linear-log (y varies linearly with ln(x))
+        4 = Log-linear (ln(y) varies linearly with x)
+        5 = Log-log (ln(y) varies linearly with ln(x))
+    
+    The function domain can be divided into multiple regions, each with its own
+    interpolation scheme, defined by breakpoints.
+    """
     def __init__(self, x, y, breakpoints=None, interpolation=None):
+        # Convert input arrays to numpy arrays for efficient computation
+        # Handle both numpy arrays and iterables (lists, tuples, etc.)
         x_arr = np.asarray(list(x) if not isinstance(x, np.ndarray) else x, dtype=float)
         y_arr = np.asarray(list(y) if not isinstance(y, np.ndarray) else y, dtype=float)
         if breakpoints is None or interpolation is None:
