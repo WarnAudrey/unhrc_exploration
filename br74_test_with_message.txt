@@ -1,0 +1,17 @@
+The output shows:
+  "Found 1 decay state(s)"
+
+This means the parser only found ONE MF=8 MT=457 section in your file.
+
+To see multiple levels, your file needs to have:
+- MAT=837 (ground state, LIS=0) - complete MF=8 MT=457 section
+- MAT=838 (excited state, LIS=1) - complete MF=8 MT=457 section
+
+When you provide both, you'll see:
+  "Found 2 decay section(s) across 2 material(s): MAT=837, 838"
+
+And the table will show:
+837   74   35    0    B+    0    6907.0000    91.1700    ...
+837   74   35    0    EC    0    6907.0000     8.8300    ...
+838   74   35    1    B+    0    6920.8000    87.0000    ...
+838   74   35    1    EC    0    6920.8000    13.0000    ...
