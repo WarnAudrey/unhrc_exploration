@@ -739,56 +739,56 @@ def format_and_print_combined_table(all_results):
         91: 'Pa', 92: 'U', 93: 'Np', 94: 'Pu', 95: 'Am', 96: 'Cm', 97: 'Bk', 98: 'Cf', 99: 'Es', 100: 'Fm'
     }
     
-    # Print header
+    # ================================================================
+    # CLEAN TABLE FORMAT - All Data in Easy-to-Read Columns
+    # ================================================================
+    
     print()
-    print("="*140)
-    print(f"ENDF-6 Radioactive Decay Data Parser (ENDF-102 Compliant) - Universal MAT Support")
-    print("="*140)
+    print("="*200)
+    print("RADIOACTIVE DECAY DATA TABLE - Clean Format")
+    print("="*200)
     print()
-    print(f"Number of nuclides: {len(nuclides)}")
-    print(f"Total decay sections: {len(all_results)}")
+    print(f"Total nuclides: {len(nuclides)}")
+    print(f"Total decay levels: {len(all_results)}")
     print()
     
-    # Show info for each nuclide and its states
-    state_counter = 0
+    # Print table header
+    print(f"{'Z':>3s}  {'A':>4s}  {'Element':>4s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Half-life':>18s}  {'Q-value':>12s}  {'B+ Branch':>10s}  {'EC Branch':>10s}  {'Mean α':>10s}  {'Mean β':>10s}  {'Mean γ':>10s}  {'MAT':>5s}")
+    print(f"{'':>3s}  {'':>4s}  {'':>4s}  {'':>3s}  {'Name':>8s}  {'':>18s}  {'(keV)':>12s}  {'(%)':>10s}  {'(%)':>10s}  {'(keV)':>10s}  {'(keV)':>10s}  {'(keV)':>10s}  {'':>5s}")
+    print("-"*200)
+    
+    # Print table rows - one row per decay level
     for za in sorted(nuclides.keys()):
         z = za // 1000
         a = za % 1000
         element = ELEMENT_SYMBOLS.get(z, f'Z{z}')
         
-        print(f"Nuclide: {element}-{a} (Z={z}, A={a}, ZA={za})")
-        print(f"  Number of decay states: {len(nuclides[za])}")
-        print()
-        
         for result in nuclides[za]:
             lis = result.get("LIS", 0)
-            liso = result.get("LISO", 0)
             mat = result.get("MAT", 0)
+            
             # Handle half-life (may be missing for stable nuclides)
             halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
+            halflife_str = format_halflife(halflife_s) if halflife_s > 0 else "STABLE"
             
-            level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
+            # Nuclide name (e.g., Br-74, Br-74m, Br-74m2)
+            if lis == 0:
+                nuclide_name = f"{element}-{a}"
+            elif lis == 1:
+                nuclide_name = f"{element}-{a}m"
+            else:
+                nuclide_name = f"{element}-{a}m{lis}"
             
-            print(f"  State {state_counter} (MAT={mat}, LIS={lis}, LISO={liso}):")
-            print(f"    Name: {level_name}")
-            print(f"    Half-life: {halflife_s:.4e} seconds ({halflife_s/60.0:.2f} minutes)")
-            
+            # Get decay data
             if result.get("modes"):
                 mode = result["modes"][0]
                 q_kev = mode["Q"][0] / 1000.0
                 rtyp = mode["RTYP"]
                 total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
                 
-                print(f"    Q-value: {q_kev:.4f} keV")
-                print(f"    RTYP: {rtyp} → {'EC/β+ decay' if rtyp == 2.0 else f'Decay type {rtyp}'}")
-                
                 # Calculate B+/EC split
                 bplus_br_pct = extract_bplus_branching(result)
                 ec_br_pct = total_br_pct - bplus_br_pct
-                
-                print(f"    Total Branching Ratio: {total_br_pct:.4f}%")
-                print(f"    β+ Branching: {bplus_br_pct:.4f}%")
-                print(f"    EC Branching: {ec_br_pct:.4f}%")
                 
                 # Mean energies (only if spectra data exists)
                 mean_alpha = 0.0
@@ -806,69 +806,19 @@ def format_and_print_combined_table(all_results):
                             mean_beta = er_av_kev
                         elif styp == 4:  # Alpha
                             mean_alpha = er_av_kev
-                    
-                    print(f"    Mean energies: α={mean_alpha:.4f} keV, β={mean_beta:.4f} keV, γ={mean_gamma:.4f} keV")
-                else:
-                    print(f"    (No spectra data available)")
-            print()
-            state_counter += 1
+            else:
+                # Stable nuclide or no decay modes
+                q_kev = 0.0
+                bplus_br_pct = 0.0
+                ec_br_pct = 0.0
+                mean_alpha = 0.0
+                mean_beta = 0.0
+                mean_gamma = 0.0
+            
+            # Print single row for this decay level
+            print(f"{z:>3d}  {a:>4d}  {element:>4s}  {lis:>3d}  {nuclide_name:>8s}  {halflife_str:>18s}  {q_kev:>12.2f}  {bplus_br_pct:>10.2f}  {ec_br_pct:>10.2f}  {mean_alpha:>10.2f}  {mean_beta:>10.2f}  {mean_gamma:>10.2f}  {mat:>5d}")
     
-    # Print combined table
-    print("="*140)
-    print("DECAY MODES TABLE (ALL NUCLIDES AND LEVELS)")
-    print("="*140)
-    print()
-    print(f"{'MAT':5s} {'A':4s} {'Z':3s} {'Parent':>8s} {'Decay':>8s} {'Daughter':>8s} {'Q-value':>15s} {'Branching':>15s} {'Half-life':>15s} {'α Energy':>15s} {'β Energy':>15s} {'γ Energy':>15s}")
-    print(f"{'':5s} {'':4s} {'':3s} {'Level':>8s} {'Mode':>8s} {'Level':>8s} {'(keV)':>15s} {'Ratio (%)':>15s} {'(seconds)':>15s} {'(keV)':>15s} {'(keV)':>15s} {'(keV)':>15s}")
-    print("-"*140)
-    
-    # Print rows for each nuclide, state, and decay mode
-    for za in sorted(nuclides.keys()):
-        z = za // 1000
-        a = za % 1000
-        
-        for result in nuclides[za]:
-            lis = result.get("LIS", 0)
-            mat = result.get("MAT", 0)
-            # Handle half-life (may be missing for stable nuclides)
-            halflife_s = result.get("T1/2", [0, 0])[0] if "T1/2" in result else 0
-            
-            if not result.get("modes"):
-                continue
-            
-            mode = result["modes"][0]
-            q_kev = mode["Q"][0] / 1000.0
-            rtyp = mode["RTYP"]
-            total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
-            
-            # Mean energies (only if spectra data exists)
-            mean_alpha = 0.0
-            mean_beta = 0.0
-            mean_gamma = 0.0
-            
-            if "spectra" in result:
-                for spec in result["spectra"]:
-                    styp = spec["STYP"]
-                    er_av_kev = spec["ER_AV"][0] / 1000.0
-                    
-                    if styp == 0:
-                        mean_gamma = er_av_kev
-                    elif styp == 2:
-                        mean_beta = er_av_kev
-                    elif styp == 4:
-                        mean_alpha = er_av_kev
-            
-            # Calculate B+/EC split
-            bplus_br_pct = extract_bplus_branching(result)
-            ec_br_pct = total_br_pct - bplus_br_pct
-            
-            # Print B+ row
-            print(f"{mat:<5d} {a:<4d} {z:<3d} {lis:>8d} {'B+':>8s} {0:>8d} {q_kev:>15.4f} {bplus_br_pct:>15.4f} {halflife_s:>15.4e} {mean_alpha:>15.4f} {mean_beta:>15.4f} {mean_gamma:>15.4f}")
-            
-            # Print EC row
-            print(f"{mat:<5d} {a:<4d} {z:<3d} {lis:>8d} {'EC':>8s} {0:>8d} {q_kev:>15.4f} {ec_br_pct:>15.4f} {halflife_s:>15.4e} {mean_alpha:>15.4f} {mean_beta:>15.4f} {mean_gamma:>15.4f}")
-    
-    print("-"*140)
+    print("-"*200)
     print()
     print("Summary:")
     for za in sorted(nuclides.keys()):
