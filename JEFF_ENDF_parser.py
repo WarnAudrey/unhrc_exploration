@@ -959,56 +959,68 @@ def print_energy_distribution_summary(all_results):
         print(f"ENERGY SUMMARY: {nuclide_name} (MAT={mat})")
         print(f"{'='*200}")
         
-        if "spectra" not in result:
+        if "spectra" not in result or not result["spectra"]:
             print("  (No energy data - stable nuclide)")
             continue
         
         # Collect all energies with their types
         all_energies = []
         
-        for spec in result["spectra"]:
-            styp = spec["STYP"]
-            styp_names = {0: "γ", 2: "β+", 4: "α", 8: "X-ray", 9: "Auger"}
-            styp_name = styp_names.get(styp, f"Type-{styp}")
-            
-            # Discrete energies
-            if "discrete" in spec:
-                for disc in spec["discrete"]:
-                    energy_kev = disc["ER"][0] / 1000.0
-                    energy_unc = disc["ER"][1] / 1000.0
-                    
-                    # Get intensity
-                    intensity = 0.0
-                    if "INTENSITY" in disc:
-                        intensity = disc["INTENSITY"][0]
-                    elif "RI" in disc:
-                        intensity = disc["RI"][0]
-                    else:
-                        all_vals = disc.get("all_values", [])
-                        intensity = all_vals[4] if len(all_vals) > 4 else 0.0
-                    
-                    all_energies.append({
-                        'energy': energy_kev,
-                        'uncertainty': energy_unc,
-                        'type': styp_name,
-                        'intensity': intensity,
-                        'discrete': True
-                    })
-            
-            # Mean energy
-            mean_e = spec["ER_AV"][0] / 1000.0
-            mean_unc = spec["ER_AV"][1] / 1000.0
-            all_energies.append({
-                'energy': mean_e,
-                'uncertainty': mean_unc,
-                'type': f"{styp_name}-mean",
-                'intensity': 0.0,
-                'discrete': False
-            })
+        try:
+            for spec in result["spectra"]:
+                styp = spec.get("STYP", -1)
+                styp_names = {0: "γ", 2: "β+", 4: "α", 8: "X-ray", 9: "Auger"}
+                styp_name = styp_names.get(styp, f"Type-{styp}")
+                
+                # Discrete energies
+                if "discrete" in spec and spec["discrete"]:
+                    for disc in spec["discrete"]:
+                        try:
+                            energy_kev = disc["ER"][0] / 1000.0
+                            energy_unc = disc["ER"][1] / 1000.0
+                            
+                            # Get intensity
+                            intensity = 0.0
+                            if "INTENSITY" in disc:
+                                intensity = disc["INTENSITY"][0]
+                            elif "RI" in disc:
+                                intensity = disc["RI"][0]
+                            else:
+                                all_vals = disc.get("all_values", [])
+                                intensity = all_vals[4] if len(all_vals) > 4 else 0.0
+                            
+                            all_energies.append({
+                                'energy': energy_kev,
+                                'uncertainty': energy_unc,
+                                'type': styp_name,
+                                'intensity': intensity,
+                                'discrete': True
+                            })
+                        except (KeyError, IndexError, TypeError):
+                            continue
+                
+                # Mean energy
+                if "ER_AV" in spec and spec["ER_AV"]:
+                    try:
+                        mean_e = spec["ER_AV"][0] / 1000.0
+                        mean_unc = spec["ER_AV"][1] / 1000.0
+                        all_energies.append({
+                            'energy': mean_e,
+                            'uncertainty': mean_unc,
+                            'type': f"{styp_name}-mean",
+                            'intensity': 0.0,
+                            'discrete': False
+                        })
+                    except (KeyError, IndexError, TypeError):
+                        continue
+        except Exception as e:
+            print(f"  (Error collecting energies: {e})")
+            continue
         
         # Sort by energy
         all_energies.sort(key=lambda x: x['energy'])
         
+        # Skip if no energies available
         if not all_energies:
             print("  (No energy data available)")
             continue
@@ -1023,7 +1035,16 @@ def print_energy_distribution_summary(all_results):
         
         print()
         print(f"Total discrete energies: {sum(1 for e in all_energies if e['discrete'])}")
-        print(f"Energy range: {min(e['energy'] for e in all_energies):.4f} - {max(e['energy'] for e in all_energies):.4f} keV")
+        # Double-check before calculating min/max to prevent crash
+        if all_energies:
+            try:
+                min_e = min(e['energy'] for e in all_energies)
+                max_e = max(e['energy'] for e in all_energies)
+                print(f"Energy range: {min_e:.4f} - {max_e:.4f} keV")
+            except (ValueError, KeyError):
+                print(f"Energy range: N/A (unable to calculate)")
+        else:
+            print(f"Energy range: N/A (no energies available)")
     
     print()
     print("="*200)
