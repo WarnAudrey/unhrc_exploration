@@ -546,6 +546,10 @@ def extract_bplus_branching(parsed_data):
     Returns:
         β+ branching ratio as a percentage (0-100)
     """
+    # Handle stable nuclides (no decay data)
+    if "spectra" not in parsed_data:
+        return 0.0
+    
     # Look for the beta+ spectrum (STYP=2)
     for spec in parsed_data["spectra"]:
         if spec["STYP"] == 2 and "discrete" in spec:  # Beta+ spectrum
@@ -786,23 +790,26 @@ def format_and_print_combined_table(all_results):
                 print(f"    β+ Branching: {bplus_br_pct:.4f}%")
                 print(f"    EC Branching: {ec_br_pct:.4f}%")
                 
-                # Mean energies
+                # Mean energies (only if spectra data exists)
                 mean_alpha = 0.0
                 mean_beta = 0.0
                 mean_gamma = 0.0
                 
-                for spec in result["spectra"]:
-                    styp = spec["STYP"]
-                    er_av_kev = spec["ER_AV"][0] / 1000.0
+                if "spectra" in result:
+                    for spec in result["spectra"]:
+                        styp = spec["STYP"]
+                        er_av_kev = spec["ER_AV"][0] / 1000.0
+                        
+                        if styp == 0:  # Gamma
+                            mean_gamma = er_av_kev
+                        elif styp == 2:  # Beta+
+                            mean_beta = er_av_kev
+                        elif styp == 4:  # Alpha
+                            mean_alpha = er_av_kev
                     
-                    if styp == 0:  # Gamma
-                        mean_gamma = er_av_kev
-                    elif styp == 2:  # Beta+
-                        mean_beta = er_av_kev
-                    elif styp == 4:  # Alpha
-                        mean_alpha = er_av_kev
-                
-                print(f"    Mean energies: α={mean_alpha:.4f} keV, β={mean_beta:.4f} keV, γ={mean_gamma:.4f} keV")
+                    print(f"    Mean energies: α={mean_alpha:.4f} keV, β={mean_beta:.4f} keV, γ={mean_gamma:.4f} keV")
+                else:
+                    print(f"    (No spectra data available)")
             print()
             state_counter += 1
     
@@ -834,21 +841,22 @@ def format_and_print_combined_table(all_results):
             rtyp = mode["RTYP"]
             total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
             
-            # Mean energies
+            # Mean energies (only if spectra data exists)
             mean_alpha = 0.0
             mean_beta = 0.0
             mean_gamma = 0.0
             
-            for spec in result["spectra"]:
-                styp = spec["STYP"]
-                er_av_kev = spec["ER_AV"][0] / 1000.0
-                
-                if styp == 0:
-                    mean_gamma = er_av_kev
-                elif styp == 2:
-                    mean_beta = er_av_kev
-                elif styp == 4:
-                    mean_alpha = er_av_kev
+            if "spectra" in result:
+                for spec in result["spectra"]:
+                    styp = spec["STYP"]
+                    er_av_kev = spec["ER_AV"][0] / 1000.0
+                    
+                    if styp == 0:
+                        mean_gamma = er_av_kev
+                    elif styp == 2:
+                        mean_beta = er_av_kev
+                    elif styp == 4:
+                        mean_alpha = er_av_kev
             
             # Calculate B+/EC split
             bplus_br_pct = extract_bplus_branching(result)
@@ -889,6 +897,11 @@ def format_and_print_combined_table(all_results):
 
 def format_and_print_table(parsed_data):
     """Generate and print formatted table according to ENDF-102 specifications."""
+    
+    # Handle stable nuclides or missing data
+    if "modes" not in parsed_data or "spectra" not in parsed_data:
+        print("(Stable nuclide or incomplete decay data)")
+        return
     
     # Extract Z and A
     za = parsed_data["ZA"]
@@ -1014,6 +1027,15 @@ def print_detailed_data(parsed_data):
     print("DETAILED TRANSITION DATA")
     print("="*130)
     print()
+    
+    # Check if this is a stable nuclide (no decay data)
+    if "spectra" not in parsed_data:
+        print("(Stable nuclide - no decay transitions)")
+        print()
+        if "SPI" in parsed_data and "PAR" in parsed_data:
+            print(f"Nuclear spin: {parsed_data['SPI']}")
+            print(f"Parity: {parsed_data['PAR']}")
+        return
     
     # Gamma rays
     for spec in parsed_data["spectra"]:
@@ -1403,7 +1425,28 @@ if __name__ == "__main__":
         print("Please check the file path and try again.")
         exit(1)
     except Exception as e:
-        print(f"ERROR: Failed to parse file: {e}")
+        # Make sure stdout is restored before printing error
+        if 'original_stdout' in locals():
+            sys.stdout = original_stdout
+        
+        print()
+        print("="*80)
+        print(f"ERROR: Failed during output generation")
+        print("="*80)
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {e}")
+        print()
+        print(f"Parsing completed successfully for {len(all_results)} decay states")
+        print(f"Error occurred while generating output file: {output_file}")
+        print()
+        print("This may indicate:")
+        print("  • A stable nuclide (NST=1) was encountered")
+        print("  • Missing data in one of the parsed sections")
+        print("  • A structure we haven't seen before")
+        print()
+        print("Partial data may have been written to output file.")
+        print()
         import traceback
+        print("Full traceback:")
         traceback.print_exc()
         exit(1)
