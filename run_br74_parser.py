@@ -623,12 +623,21 @@ class ENDFNumericDecayParser:
                     discrete["ER"] = tuple(items_d[0:2])
                     discrete["RTYP"] = float(values_d[0])
                     discrete["TYPE"] = float(values_d[1])
-                    if styp == 0:
+                    if styp == 0:  # Gamma spectrum
                         discrete["RI"] = tuple(values_d[2:4].astype(float))
                         discrete["RIS"] = tuple(values_d[4:6].astype(float))
                         discrete["RICC"] = tuple(values_d[6:8].astype(float))
                         discrete["RICK"] = tuple(values_d[8:10].astype(float))
                         discrete["RICL"] = tuple(values_d[10:12].astype(float))
+                    elif styp == 2:  # Beta+ spectrum
+                        # For beta spectra, values contain:
+                        # [0-1]: RTYP, TYPE
+                        # [2-3]: Endpoint energy (already have in ER from items_d)
+                        # [4-5]: Intensity and uncertainty
+                        if len(values_d) >= 6:
+                            discrete["INTENSITY"] = tuple(values_d[4:6].astype(float))
+                    # Store all values for debugging
+                    discrete["_raw_values"] = values_d
                     spectrum["discrete"].append(discrete)
             
             if lcon != 0:
@@ -654,6 +663,34 @@ class ENDFNumericDecayParser:
         return data
 
 
+def extract_bplus_branching(parsed_data):
+    """
+    Extract B+ branching ratio by summing individual β+ transition intensities.
+    
+    According to ENDF-102 Section 8.4.2:
+    - For EC/β+ decay (RTYP=2), individual β+ transitions are stored as discrete entries
+    - The sum of all transition intensities gives the total B+ branching ratio
+    """
+    for spec in parsed_data["spectra"]:
+        if spec["STYP"] == 2 and "discrete" in spec:  # Beta+ spectrum
+            total_intensity = 0.0
+            num_transitions = len(spec['discrete'])
+            
+            for i, discrete in enumerate(spec["discrete"], 1):
+                # Extract intensity from INTENSITY field (value and uncertainty)
+                if "INTENSITY" in discrete:
+                    intensity = discrete["INTENSITY"][0]  # First value is intensity, second is uncertainty
+                    total_intensity += intensity
+            
+            if total_intensity > 0:
+                return total_intensity
+            else:
+                # Fallback: try FD field
+                return spec["FD"][0] * 100.0 if spec["FD"][0] > 1.0 else spec["FD"][0]
+    
+    return 0.0
+
+
 def format_and_print_table(parsed_data):
     """Generate and print formatted table according to ENDF-102 specifications."""
     
@@ -667,7 +704,8 @@ def format_and_print_table(parsed_data):
     mode = parsed_data["modes"][0]
     rtyp = mode["RTYP"]
     q_kev = mode["Q"][0] / 1000.0  # eV to keV
-    total_br_pct = mode["BR"][0]
+    # BR is stored as a fraction (0-1), convert to percentage
+    total_br_pct = mode["BR"][0] * 100.0 if mode["BR"][0] <= 1.0 else mode["BR"][0]
     
     # Mean energies from spectra
     mean_alpha = 0.0
@@ -694,13 +732,15 @@ def format_and_print_table(parsed_data):
     has_511_peak = False
     
     if rtyp == 2.0:  # EC/β+ decay
-        # Method 1: Get B+ fraction from beta spectrum FD field
-        # According to ENDF-102, FD is the "discrete normalization"
-        # which represents the β+ branching ratio in percent
-        for spec in parsed_data["spectra"]:
-            if spec["STYP"] == 2:  # Beta+ spectrum
-                bplus_br_pct = spec["FD"][0]
-                break
+        # Calculate B+ branching by summing individual β+ transition intensities
+        bplus_br_pct = extract_bplus_branching(parsed_data)
+        
+        if bplus_br_pct is None or bplus_br_pct == 0.0:
+            # Fallback: use FD field from beta+ spectrum
+            for spec in parsed_data["spectra"]:
+                if spec["STYP"] == 2:
+                    bplus_br_pct = spec["FD"][0] * 100.0 if spec["FD"][0] < 1.0 else spec["FD"][0]
+                    break
         
         # Method 2: Verify with 511 keV annihilation photons
         # Each β+ decay produces two 511 keV photons from annihilation
