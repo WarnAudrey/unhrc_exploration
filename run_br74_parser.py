@@ -257,22 +257,34 @@ class ENDFNumericDecayParser:
             if lcon != 1:
                 spectrum["discrete"] = []
                 for _ in range(ner):
-                    items_d, values_d = self._get_list_record()
-                    discrete = {}
-                    discrete["ER"] = tuple(items_d[0:2])
-                    discrete["RTYP"] = float(values_d[0])
-                    discrete["TYPE"] = float(values_d[1])
-                    if styp == 0:  # Gamma spectrum
-                        discrete["RI"] = tuple(values_d[2:4].astype(float))
-                        discrete["RIS"] = tuple(values_d[4:6].astype(float))
-                        discrete["RICC"] = tuple(values_d[6:8].astype(float))
-                        discrete["RICK"] = tuple(values_d[8:10].astype(float))
-                        discrete["RICL"] = tuple(values_d[10:12].astype(float))
-                    elif styp == 2:  # Beta+ spectrum
-                        if len(values_d) >= 6:
-                            discrete["INTENSITY"] = tuple(values_d[4:6].astype(float))
-                    discrete["_raw_values"] = values_d
-                    spectrum["discrete"].append(discrete)
+                    try:
+                        items_d, values_d = self._get_list_record()
+                        discrete = {}
+                        discrete["ER"] = tuple(items_d[0:2])
+                        
+                        # Handle incomplete data gracefully
+                        if len(values_d) == 0:
+                            continue
+                        
+                        discrete["RTYP"] = float(values_d[0]) if len(values_d) > 0 else 0.0
+                        discrete["TYPE"] = float(values_d[1]) if len(values_d) > 1 else 0.0
+                        
+                        if styp == 0:  # Gamma spectrum
+                            if len(values_d) >= 12:
+                                discrete["RI"] = tuple(values_d[2:4].astype(float))
+                                discrete["RIS"] = tuple(values_d[4:6].astype(float))
+                                discrete["RICC"] = tuple(values_d[6:8].astype(float))
+                                discrete["RICK"] = tuple(values_d[8:10].astype(float))
+                                discrete["RICL"] = tuple(values_d[10:12].astype(float))
+                        elif styp == 2:  # Beta+ spectrum
+                            if len(values_d) >= 6:
+                                discrete["INTENSITY"] = tuple(values_d[4:6].astype(float))
+                        
+                        discrete["_raw_values"] = values_d
+                        spectrum["discrete"].append(discrete)
+                    except (IndexError, ValueError, EOFError) as e:
+                        # Skip incomplete or malformed records
+                        continue
             
             if lcon != 0:
                 params, rp = self._get_tab1_record()
