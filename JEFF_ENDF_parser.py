@@ -714,8 +714,8 @@ def format_and_print_combined_table(all_results):
         print("No data to display")
         return
     
-    # First verify all levels
-    verify_all_levels(all_results)
+    # Skip verbose level verification - just show the clean table
+    # verify_all_levels(all_results)
     
     # Group results by nuclide (ZA)
     nuclides = {}
