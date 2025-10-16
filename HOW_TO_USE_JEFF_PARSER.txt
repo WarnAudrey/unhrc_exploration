@@ -1,0 +1,90 @@
+================================================================================
+HOW TO USE JEFF_ENDF_PARSER.PY WITH YOUR JEFF-4.0 DATABASE
+================================================================================
+
+STEP 1: Copy the parser to your machine
+----------------------------------------
+The parser is located at: /workspace/JEFF_ENDF_parser.py
+
+Copy it to your JEFF data directory:
+  cp /workspace/JEFF_ENDF_parser.py /Users/audreywarn/fluka-db-audrey/data_input/endf/
+
+
+STEP 2: Navigate to your JEFF directory
+----------------------------------------
+  cd /Users/audreywarn/fluka-db-audrey/data_input/endf/
+
+
+STEP 3: Run the parser
+----------------------------------------
+
+Basic usage (summary view):
+  python3 JEFF_ENDF_parser.py Radioactive_Decay_Data_JEFF-40.txt
+
+With custom output filename:
+  python3 JEFF_ENDF_parser.py Radioactive_Decay_Data_JEFF-40.txt -o JEFF40_analysis.txt
+
+With verbose details (WARNING: very large output):
+  python3 JEFF_ENDF_parser.py --verbose Radioactive_Decay_Data_JEFF-40.txt
+
+
+EXPECTED OUTPUT:
+----------------
+Console will show:
+  Found XXXX decay section(s) across YYYY material(s): MAT=125, 131, 225...
+  ✓ Successfully parsed MAT=125, LIS=0
+  ✓ Successfully parsed MAT=131, LIS=0
+  ... [continues for all sections]
+  
+  ✓ Successfully parsed: Radioactive_Decay_Data_JEFF-40.txt
+  ✓ Output saved to: Radioactive_Decay_Data_JEFF-40_parsed_output.txt
+  ✓ Found XXXX decay state(s) across YYYY nuclide(s)
+
+Output file will contain:
+  - Level completeness check for ALL nuclides
+  - Individual state information
+  - Combined decay modes table
+  - Summary statistics
+
+
+PERFORMANCE EXPECTATIONS:
+--------------------------
+For full JEFF-4.0 dataset (~3000 nuclides):
+  - Parsing time: 30-60 seconds
+  - Output file size: 50-100 MB
+  - Memory usage: < 500 MB
+
+
+TROUBLESHOOTING:
+----------------
+If you get "command not found":
+  Make sure Python 3 is installed: python3 --version
+  Required: Python 3.7 or higher
+
+If you get "ModuleNotFoundError: No module named 'numpy'":
+  Install numpy: pip3 install numpy
+
+If parsing is very slow:
+  The file is large - this is normal. Wait for completion.
+  For faster results, use summary mode (default) not --verbose.
+
+
+FILTERING SPECIFIC ELEMENTS:
+-----------------------------
+To parse only specific elements (faster):
+
+Uranium only:
+  grep -A 1000 "92-U" Radioactive_Decay_Data_JEFF-40.txt > uranium_only.txt
+  python3 JEFF_ENDF_parser.py uranium_only.txt
+
+Plutonium only:
+  grep -A 1000 "94-Pu" Radioactive_Decay_Data_JEFF-40.txt > plutonium_only.txt
+  python3 JEFF_ENDF_parser.py plutonium_only.txt
+
+
+ALTERNATIVE: Run from anywhere
+-------------------------------
+If you want to keep the parser elsewhere:
+  python3 /path/to/JEFF_ENDF_parser.py /Users/audreywarn/fluka-db-audrey/data_input/endf/Radioactive_Decay_Data_JEFF-40.txt
+
+================================================================================
