@@ -687,63 +687,173 @@ class ENDFNumericDecayParser:
         return items, b, metadata, list_lines
     
     def _get_tab1_record(self):
+        """
+        Parse a TAB1 record: tabulated 1D function y=f(x).
+        
+        TAB1 Structure (ENDF-102):
+        ---------------------------
+        Line 1: [C1  C2  L1  L2  NR  NP  MAT MF MT SEQ]
+          C1, C2 = parameters (meaning depends on context)
+          L1, L2 = flags (meaning depends on context)
+          NR     = number of interpolation regions
+          NP     = number of (x, y) data pairs
+        
+        Lines 2+: Interpolation table (if NR > 0)
+          Each line holds 3 pairs of [NBT, INT]:
+            NBT = breakpoint (last point in region)
+            INT = interpolation scheme (1=histogram, 2=linear, ...)
+        
+        Lines after: Data pairs
+          Each line holds 3 pairs of [x, y] values
+        
+        Returns:
+        --------
+        tuple: (params, Tabulated1D, metadata, raw_lines)
+          params      = [C1, C2, L1, L2]
+          Tabulated1D = object with x, y, breakpoints, interpolation
+          metadata    = {MAT, MF, MT, SEQ}
+          raw_lines   = original ENDF text lines
+        """
+        # ========================================
+        # STEP 1: Read first line (header)
+        # ========================================
         line = self._readline()
-        c1 = self._py_float_endf(line[:11])
-        c2 = self._py_float_endf(line[11:22])
-        l1 = self._int_endf(line[22:33])
-        l2 = self._int_endf(line[33:44])
-        n_regions = self._int_endf(line[44:55])
-        n_pairs = self._int_endf(line[55:66])
+        
+        # Extract control parameters from fixed-width columns (11 chars each)
+        c1 = self._py_float_endf(line[:11])          # First parameter (cols 1-11)
+        c2 = self._py_float_endf(line[11:22])        # Second parameter (cols 12-22)
+        l1 = self._int_endf(line[22:33])             # First flag (cols 23-33)
+        l2 = self._int_endf(line[33:44])             # Second flag (cols 34-44)
+        n_regions = self._int_endf(line[44:55])      # Number of interpolation regions (cols 45-55)
+        n_pairs = self._int_endf(line[55:66])        # Number of (x,y) data pairs (cols 56-66)
+        
+        # Store parameters for return
         params = [c1, c2, l1, l2]
+        
+        # Extract metadata (MAT, MF, MT, SEQ) from columns 67-80
         metadata = self._extract_line_metadata(line)
+        
+        # Store raw ENDF line for complete record
         tab1_lines = [line]
         
-        breakpoints = np.zeros(n_regions, dtype=int)
-        interpolation = np.zeros(n_regions, dtype=int)
-        m = 0
+        # ========================================
+        # STEP 2: Read interpolation table
+        # ========================================
+        # Each interpolation region needs 2 integers: NBT (breakpoint) and INT (scheme)
+        # Each line can hold 3 pairs (6 integers total), packed in 11-char fields
+        
+        breakpoints = np.zeros(n_regions, dtype=int)     # NBT values
+        interpolation = np.zeros(n_regions, dtype=int)   # INT values
+        m = 0  # Current region index
+        
+        # Calculate number of lines needed: ceil(n_regions / 3)
         for _ in range((n_regions - 1) // 3 + 1):
             line = self._readline()
             tab1_lines.append(line)
+            
+            # Read up to 3 pairs from this line (or fewer if near end)
             to_read = min(3, n_regions - m)
+            
             for _ in range(to_read):
-                breakpoints[m] = self._int_endf(line[0:11])
-                interpolation[m] = self._int_endf(line[11:22])
-                line = line[22:]
+                # Each pair occupies 22 chars (2 × 11-char fields)
+                breakpoints[m] = self._int_endf(line[0:11])      # NBT: last point in region
+                interpolation[m] = self._int_endf(line[11:22])   # INT: interpolation scheme
+                line = line[22:]  # Move to next pair by slicing off first 22 chars
                 m += 1
         
-        x = np.zeros(n_pairs)
-        y = np.zeros(n_pairs)
-        m = 0
+        # ========================================
+        # STEP 3: Read (x, y) data pairs
+        # ========================================
+        # Each line contains 3 pairs of floats, each pair is 22 chars (2 × 11-char fields)
+        
+        x = np.zeros(n_pairs)  # Independent variable (e.g., energy)
+        y = np.zeros(n_pairs)  # Dependent variable (e.g., probability)
+        m = 0  # Current pair index
+        
+        # Calculate number of lines needed: ceil(n_pairs / 3)
         for _ in range((n_pairs - 1) // 3 + 1):
             line = self._readline()
             tab1_lines.append(line)
+            
+            # Read up to 3 pairs from this line
             to_read = min(3, n_pairs - m)
+            
             for _ in range(to_read):
-                x[m] = self._py_float_endf(line[:11])
-                y[m] = self._py_float_endf(line[11:22])
-                line = line[22:]
+                x[m] = self._py_float_endf(line[:11])    # x value (cols 1-11)
+                y[m] = self._py_float_endf(line[11:22])  # y value (cols 12-22)
+                line = line[22:]  # Move to next pair
                 m += 1
         
+        # Return structured data: parameters, tabulated function object, metadata, raw text
         return params, Tabulated1D(x, y, breakpoints, interpolation), metadata, tab1_lines
     
     def _get_tab2_record(self):
+        """
+        Parse a TAB2 record: metadata for 2D tabulated function z=f(x,y).
+        
+        TAB2 Structure (ENDF-102):
+        ---------------------------
+        Line 1: [C1  C2  L1  L2  NR  NZ  MAT MF MT SEQ]
+          This is a CONT record with:
+          C1, C2 = parameters (meaning depends on context)
+          L1, L2 = flags (meaning depends on context)
+          NR     = number of interpolation regions for x-axis
+          NZ     = number of y values (each followed by a TAB1)
+        
+        Lines 2+: Interpolation table for x-axis
+          Same format as TAB1: 3 pairs of [NBT, INT] per line
+        
+        NOTE: TAB2 does NOT contain actual data - it's followed by
+              NZ separate TAB1 records, one for each y value.
+        
+        Returns:
+        --------
+        tuple: (params, Tabulated2D, metadata, raw_lines)
+          params      = [C1, C2, L1, L2, NR, NZ]
+          Tabulated2D = object with breakpoints and interpolation
+          metadata    = {MAT, MF, MT, SEQ}
+          raw_lines   = original ENDF text lines
+        """
+        # ========================================
+        # STEP 1: Read CONT record (header line)
+        # ========================================
+        # TAB2 starts with a CONT record containing parameters
         params_tuple = self._get_cont_record()
-        params = list(params_tuple[:6])
+        params = list(params_tuple[:6])  # [C1, C2, L1, L2, NR, NZ]
+        
+        # Extract metadata if returned by _get_cont_record
         metadata = params_tuple[6] if len(params_tuple) > 6 else {}
+        
+        # Number of interpolation regions from field 5 (index 4)
         n_regions = params[4]
-        breakpoints = np.zeros(n_regions, dtype=int)
-        interpolation = np.zeros(n_regions, dtype=int)
-        tab2_lines = []
-        m = 0
+        
+        # ========================================
+        # STEP 2: Read interpolation table
+        # ========================================
+        # Same structure as TAB1: breakpoints and interpolation schemes
+        # for the x-axis of the 2D function
+        
+        breakpoints = np.zeros(n_regions, dtype=int)     # NBT values
+        interpolation = np.zeros(n_regions, dtype=int)   # INT values
+        tab2_lines = []  # Store raw ENDF lines
+        m = 0  # Current region index
+        
+        # Each line holds 3 pairs of [NBT, INT]
+        # Calculate number of lines needed: ceil(n_regions / 3)
         for _ in range((n_regions - 1) // 3 + 1):
             line = self._readline()
             tab2_lines.append(line)
+            
+            # Read up to 3 pairs from this line
             to_read = min(3, n_regions - m)
+            
             for _ in range(to_read):
-                breakpoints[m] = self._int_endf(line[0:11])
-                interpolation[m] = self._int_endf(line[11:22])
-                line = line[22:]
+                breakpoints[m] = self._int_endf(line[0:11])      # NBT: last point in region
+                interpolation[m] = self._int_endf(line[11:22])   # INT: interpolation scheme
+                line = line[22:]  # Advance to next pair (slice off first 22 chars)
                 m += 1
+        
+        # Return metadata structure (actual 2D data comes from subsequent TAB1 records)
         return params, Tabulated2D(breakpoints, interpolation), metadata, tab2_lines
     
     def _get_intg_record(self):
