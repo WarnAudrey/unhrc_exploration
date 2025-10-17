@@ -1,12 +1,91 @@
 #!/usr/bin/env python3
 """
 JEFF ENDF-6 Radioactive Decay Data Parser (MF=8, MT=457) - COMPLETE ENERGY EXTRACTION
+======================================================================================
 
+OVERVIEW
+--------
 Universal parser for JEFF (Joint Evaluated Fission and Fusion) radioactive decay databases.
 Parses ENDF-6 format radioactive decay data from the complete JEFF-4.0 dataset or any ENDF file.
-Supports ALL material (MAT) numbers and automatically detects all nuclides and isomeric states.
-Implements proper B+/EC splitting according to ENDF-102 specifications.
+Extracts ALL energy information, not just summary statistics.
 
+Reference: ENDF-102 Data Formats and Procedures for the Evaluated Nuclear Data Files
+           https://www.nndc.bnl.gov/endfdocs/ENDF-102-2023.pdf
+           Section 8: Radioactive Decay Data (MF=8, MT=457)
+
+ENDF-6 FILE FORMAT
+------------------
+ENDF (Evaluated Nuclear Data File) is a fixed-width ASCII format used to store nuclear data.
+Each file is organized into:
+  - Materials (MAT): Each nuclide/isomer has a unique MAT number (1-9999)
+  - Files (MF): Data type (MF=8 = radioactive decay data)
+  - Sections (MT): Reaction type (MT=457 = decay data)
+  
+ENDF Line Structure (80 characters fixed-width):
+  Columns 1-66:   Data fields (typically 6 fields of 11 characters each)
+  Columns 67-70:  MAT number (material identifier)
+  Columns 71-72:  MF number (file type)
+  Columns 73-75:  MT number (section type)
+  Columns 76-80:  Line sequence number
+  
+Floating Point Format:
+  ENDF uses "E-less" notation: 1.23456+7 instead of 1.23456E+7
+  This parser handles both formats automatically.
+
+MF=8 MT=457 STRUCTURE (Radioactive Decay Data)
+-----------------------------------------------
+According to ENDF-102 Section 8.1, each MF=8 MT=457 section contains:
+
+1. HEAD Record: Basic nuclide identification
+   - ZA: Nuclide identifier (Z*1000 + A, e.g., 92235 for U-235)
+   - AWR: Atomic weight ratio (mass relative to neutron)
+   - LIS: Isomeric state level (0=ground, 1=1st excited, 2=2nd excited, etc.)
+   - LISO: Isomeric state flag (0=ground, 1=excited)
+   - NST: Stability flag (0=radioactive, 1=stable)
+   - NSP: Number of radiation spectra to follow
+
+2. LIST Record: Half-life and excitation energies
+   - T1/2: Half-life in seconds with uncertainty
+   - NC: Number of daughter excitation states
+   - Ex: Excitation energies for daughter states
+
+3. LIST Record: Spin/parity and decay modes
+   - SPI: Nuclear spin
+   - PAR: Parity (+1 or -1)
+   - NDK: Number of decay modes
+   - For each mode:
+     * RTYP: Decay type (0=γ, 1=β-, 2=EC/β+, 4=α, 5=n, 6=SF, 7=p)
+     * RFS: Daughter isomeric state
+     * Q: Q-value (decay energy) with uncertainty
+     * BR: Branching ratio with uncertainty
+
+4. NSP Radiation Spectra (one for each type):
+   Each spectrum contains:
+   - Summary LIST: Mean energies and normalization
+   - Discrete transitions (LIST records for each)
+   - Continuous spectrum (TAB1 if present)
+   - Covariance data (if available)
+   
+   Common spectrum types (STYP):
+     0 = Gamma rays
+     2 = Beta+ particles
+     4 = Alpha particles
+     8 = X-rays
+     9 = Auger electrons
+
+ISOMERIC STATES
+---------------
+CRITICAL: Different isomeric states (LIS) of the same nuclide are stored as
+SEPARATE MF=8 MT=457 sections, often with different MAT numbers.
+
+Example for Br-74:
+  - Br-74 ground state (LIS=0) → MAT=837
+  - Br-74 excited state (LIS=1) → MAT=838
+
+This parser automatically detects and processes ALL isomeric states.
+
+DATA EXTRACTION
+---------------
 **COMPLETE ENERGY EXTRACTION - ALL Individual Transitions:**
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ EVERY beta+ transition energy, intensity, and average energy
@@ -27,7 +106,18 @@ Implements proper B+/EC splitting according to ENDF-102 specifications.
 - All interpolation parameters
 - File structure metadata
 
-Features:
+BETA+/EC SPLITTING
+------------------
+For EC/β+ decay (RTYP=2.0), ENDF stores the TOTAL branching ratio.
+According to ENDF-102, to separate β+ and EC:
+  1. β+ branching = sum of individual β+ transition intensities
+  2. EC branching = Total branching - β+ branching
+
+This parser implements this correctly, extracting individual β+ intensities
+from the beta+ spectrum (STYP=2) and calculating the EC component.
+
+FEATURES
+--------
 - Parses entire JEFF radioactive decay database (~3000 nuclides)
 - Universal MAT support (works with ANY material number 1-9999)
 - Automatic multi-level detection and verification
@@ -39,20 +129,44 @@ Features:
 - Works with incomplete/partial ENDF data
 - **NO information lost - complete data extraction**
 
-Usage:
-    python3 JEFF_ENDF_parser.py <jeff_decay_file.endf>           # All energies
-    python3 JEFF_ENDF_parser.py --verbose <jeff_decay_file.endf> # + raw records
-    python3 JEFF_ENDF_parser.py -o output.txt <input.endf>       # Save to file
+USAGE
+-----
+    # Compact summary table only
+    python3 JEFF_ENDF_parser.py --compact <jeff_file.endf>
+    
+    # All individual energies + summary
+    python3 JEFF_ENDF_parser.py <jeff_file.endf>
+    
+    # With raw ENDF records
+    python3 JEFF_ENDF_parser.py --verbose <jeff_file.endf>
+    
+    # Save to file
+    python3 JEFF_ENDF_parser.py -o output.txt <jeff_file.endf>
 
-Examples:
+EXAMPLES
+--------
     python3 JEFF_ENDF_parser.py jeff-40-radioactive.endf
+    python3 JEFF_ENDF_parser.py --compact -o summary.txt jeff-40-radioactive.endf
     python3 JEFF_ENDF_parser.py --verbose uranium_decay.endf -o full_data.txt
     
-Output Format:
-    1. Individual energy tables for each nuclide (ALL transitions)
-    2. Energy distribution summary (all energies sorted)
-    3. Summary table with mean energies and branching ratios
-    4. Verbose mode adds raw ENDF records and metadata
+OUTPUT MODES
+------------
+  --compact : Clean summary table (Z, A, LIS, half-life, Q-value, branching, mean energies)
+  (default) : Compact table + ALL individual transition energies
+  --verbose : Everything + raw ENDF records and metadata
+
+OUTPUT FORMAT
+-------------
+    1. Compact summary table (essential decay parameters)
+    2. Individual energy tables for each nuclide (ALL transitions)
+    3. Energy distribution summary (all energies sorted)
+    4. Comprehensive summary table (verbose mode only)
+    5. Raw ENDF records and metadata (verbose mode only)
+
+AUTHOR & REFERENCE
+------------------
+Based on ENDF-6 format specification: ENDF-102 (2023 revision)
+Parses JEFF-4.0 radioactive decay data files (and compatible formats)
 """
 
 import re
@@ -81,18 +195,55 @@ class Tabulated1D:
     """
     Tabulated1D: One-dimensional tabulated function with ENDF-6 interpolation support.
     
+    ENDF-102 Reference: Section 0.6.2 - TAB1 Record
+    
     This class implements the TAB1 record type from ENDF-6 format, which represents
     a 1D function as a series of (x,y) points with interpolation rules between them.
     
-    ENDF-6 supports multiple interpolation schemes:
-        1 = Histogram (constant y in each interval)
-        2 = Linear-linear (straight line between points)
-        3 = Linear-log (y varies linearly with ln(x))
-        4 = Log-linear (ln(y) varies linearly with x)
-        5 = Log-log (ln(y) varies linearly with ln(x))
+    TAB1 records are used throughout ENDF for:
+      - Continuous energy spectra (e.g., beta+ energy distribution)
+      - Cross sections as functions of energy
+      - Angular distributions
+      - Any other 1D tabulated data
     
+    ENDF-6 Interpolation Schemes (ENDF-102 Section 0.6.1):
+    -------------------------------------------------------
+        1 = Histogram (constant y in each interval)
+            y(x) = y[i] for x[i] ≤ x < x[i+1]
+            
+        2 = Linear-linear (straight line between points)
+            y(x) = y[i] + (y[i+1] - y[i]) * (x - x[i]) / (x[i+1] - x[i])
+            
+        3 = Linear-log (y varies linearly with ln(x))
+            y(x) = y[i] + (y[i+1] - y[i]) * ln(x/x[i]) / ln(x[i+1]/x[i])
+            
+        4 = Log-linear (ln(y) varies linearly with x)
+            ln(y(x)) = ln(y[i]) + (ln(y[i+1]) - ln(y[i])) * (x - x[i]) / (x[i+1] - x[i])
+            
+        5 = Log-log (ln(y) varies linearly with ln(x))
+            ln(y(x)) = ln(y[i]) + (ln(y[i+1]) - ln(y[i])) * ln(x/x[i]) / ln(x[i+1]/x[i])
+    
+    Breakpoints:
+    ------------
     The function domain can be divided into multiple regions, each with its own
-    interpolation scheme, defined by breakpoints.
+    interpolation scheme. Breakpoints mark where the interpolation scheme changes.
+    
+    Example:
+        x = [0, 100, 200, 500, 1000]
+        y = [0, 10, 15, 20, 25]
+        breakpoints = [3, 5]  # Change scheme at index 3, covers all at index 5
+        interpolation = [2, 5]  # Linear-linear for first 3 points, log-log after
+    
+    Attributes:
+    -----------
+    x : np.ndarray
+        X-coordinates (independent variable, typically energy in eV)
+    y : np.ndarray
+        Y-coordinates (dependent variable, e.g., probability, cross section)
+    breakpoints : np.ndarray
+        Indices where interpolation scheme changes
+    interpolation : np.ndarray
+        Interpolation codes for each region
     """
     def __init__(self, x, y, breakpoints=None, interpolation=None):
         # Convert input arrays to numpy arrays for efficient computation
@@ -129,8 +280,30 @@ class Tabulated2D:
     """
     Tabulated2D: Metadata for two-dimensional tabulated functions.
     
+    ENDF-102 Reference: Section 0.6.3 - TAB2 Record
+    
     This class stores interpolation information for 2D functions in ENDF-6 format (TAB2 records).
-    It only stores the interpolation metadata; actual 2D data is stored separately.
+    TAB2 records provide metadata for functions of two variables, f(x,y).
+    
+    Structure:
+    ----------
+    A TAB2 record describes how to interpolate in the first dimension (x).
+    The actual 2D data follows as multiple TAB1 records (one for each x value).
+    
+    Example usage in ENDF:
+      - Angular distributions: f(energy, angle)
+      - Energy-angle correlated spectra
+      - Covariance matrices
+    
+    Note: This class only stores the interpolation metadata; actual 2D data
+    is stored separately as a series of TAB1 records.
+    
+    Attributes:
+    -----------
+    breakpoints : np.ndarray
+        Interpolation breakpoints for the first dimension
+    interpolation : np.ndarray
+        Interpolation codes for each region in the first dimension
     """
     def __init__(self, breakpoints, interpolation):
         # Store interpolation breakpoints (where interpolation scheme changes)
@@ -143,31 +316,163 @@ class ENDFNumericDecayParser:
     """
     ENDFNumericDecayParser: Core parser for ENDF-6 radioactive decay data (MF=8, MT=457).
     
-    This parser reads ENDF-6 format radioactive decay data files and extracts:
-    - Half-lives and Q-values
+    ENDF-102 Reference: Section 8 - Radioactive Decay Data
+    
+    This parser implements a complete reader for ENDF-6 format radioactive decay data.
+    It extracts ALL information from MF=8 MT=457 sections including:
+    
+    Data Extracted:
+    ---------------
+    - Half-lives and uncertainties (seconds)
+    - Q-values (decay energy release in eV) with uncertainties
     - Decay modes (β+, β-, EC, α, etc.) and branching ratios
-    - Radiation spectra (gamma rays, beta particles, X-rays, Auger electrons)
+    - Nuclear spin and parity
+    - Daughter excitation states
+    - Radiation spectra for all particle types:
+      * Gamma rays (STYP=0)
+      * Beta+ particles (STYP=2)
+      * Alpha particles (STYP=4)
+      * X-rays (STYP=8)
+      * Auger electrons (STYP=9)
     - Discrete transition energies and intensities
-    - Mean radiation energies
-    - **ALL raw record data and metadata**
+    - Continuous energy spectra (full tabulated distributions)
+    - Internal conversion coefficients (for gammas)
+    - Mean radiation energies for all types
+    - Complete covariance/uncertainty information
+    - ALL raw record data and metadata
     
-    ENDF-6 Format Structure:
-    - Each line is 80 characters fixed-width
-    - Columns 1-66: Data fields
-    - Columns 67-70: MAT (material identifier)
-    - Columns 71-72: MF (file number, 8 for radioactive decay)
-    - Columns 73-75: MT (section number, 457 for decay data)
-    - Columns 76-80: Line sequence number
+    ENDF-6 Line Format:
+    -------------------
+    Each ENDF line is exactly 80 characters:
     
-    MF=8 MT=457 Record Structure:
-    1. HEAD record: ZA, AWR, LIS (isomeric state), LISO, NST (stability), NSP (# spectra)
-    2. LIST record: Half-life with uncertainty
-    3. LIST record: Decay modes with Q-values and branching ratios
-    4. Multiple LIST/TAB1 records: Radiation spectra for each particle type
+    Columns 1-11:   Field 1 (typically C1 or first data value)
+    Columns 12-22:  Field 2 (typically C2 or second data value)
+    Columns 23-33:  Field 3 (typically L1 or third data value)
+    Columns 34-44:  Field 4 (typically L2 or fourth data value)
+    Columns 45-55:  Field 5 (typically N1 or fifth data value)
+    Columns 56-66:  Field 6 (typically N2 or sixth data value)
+    Columns 67-70:  MAT (material number, 1-9999)
+    Columns 71-72:  MF (file type, 8 for decay data)
+    Columns 73-75:  MT (section type, 457 for decay)
+    Columns 76-80:  Line sequence number
+    
+    Floating Point Format:
+    ----------------------
+    ENDF uses "E-less" notation: 1.23456+7 instead of 1.23456E+7
+    Both positive and negative exponents: 1.23456-3 for 0.00123456
+    This parser automatically converts to Python float format.
+    
+    Record Types (ENDF-102 Section 0.6):
+    -------------------------------------
+    HEAD: Header record - identifies material and section
+        Fields: ZA, AWR, L1, L2, N1, N2
+        
+    CONT: Control record - parameters and counters
+        Fields: C1, C2, L1, L2, N1, N2
+        
+    LIST: List of values
+        Fields: C1, C2, L1, L2, NPL (# values), N2
+        Followed by NPL values in groups of 6 per line
+        
+    TAB1: One-dimensional tabulated function
+        Fields: C1, C2, L1, L2, NR (# regions), NP (# points)
+        Followed by interpolation data and (x,y) pairs
+        
+    TAB2: Two-dimensional function metadata
+        Similar to TAB1 but for 2D data structures
+        
+    INTG: Correlation matrix (integer format)
+        Used for covariance data
+    
+    MF=8 MT=457 Section Structure (ENDF-102 Section 8.1):
+    ------------------------------------------------------
+    1. HEAD Record: Basic identification
+       - ZA: Nuclide ID (Z*1000 + A)
+       - AWR: Atomic weight ratio
+       - LIS: Isomeric state level (0, 1, 2, ...)
+       - LISO: Isomeric flag (0=ground, 1=excited)
+       - NST: Stability (0=radioactive, 1=stable)
+       - NSP: Number of spectra to follow
+       
+    2. LIST Record: Half-life data
+       - C1: Half-life (seconds)
+       - C2: Half-life uncertainty
+       - NPL: 2*NC (pairs of excitation energies)
+       - Values: (Ex, dEx) pairs for daughter states
+       
+    3. LIST Record: Decay modes
+       - C1: SPI (nuclear spin)
+       - C2: PAR (parity, ±1)
+       - N2: NDK (number of decay modes)
+       - Values: For each mode (6 values):
+         [RTYP, RFS, Q, dQ, BR, dBR]
+         
+    4. NSP Spectrum Records (one set per radiation type):
+       a) Summary LIST: Normalization and mean energies
+       b) NER Discrete LIST records (one per transition)
+       c) Continuous TAB1 (if LCON≠2)
+       d) Covariance data (if LCOV≠0)
+    
+    Decay Type Codes (RTYP):
+    -------------------------
+    0.0 = Gamma emission (isomeric transition)
+    1.0 = Beta- decay (n → p + e- + ν̄)
+    2.0 = Electron Capture / Beta+ (p → n + e+ + ν or p + e- → n + ν)
+    3.0 = Internal Transition
+    4.0 = Alpha decay (emission of He-4 nucleus)
+    5.0 = Neutron emission
+    6.0 = Spontaneous Fission
+    7.0 = Proton emission
+    
+    Spectrum Type Codes (STYP):
+    ----------------------------
+    0 = Gamma rays
+    2 = Beta+ particles (positrons)
+    4 = Alpha particles
+    8 = X-rays (characteristic atomic radiation)
+    9 = Auger electrons
+    
+    Usage:
+    ------
+    parser = ENDFNumericDecayParser()
+    parser.load_file("jeff-40-radioactive.endf")
+    
+    # Scan to first MF=8 MT=457 section
+    if parser._scan_to_mf_mt(8, 457):
+        data = parser._parse_mf8_mt457()
+        # data contains complete decay information
+    
+    Attributes:
+    -----------
+    _lines : List[str]
+        All lines from the ENDF file
+    _pos : int
+        Current reading position (line number)
+    _raw_records : List[str]
+        Raw line data for complete transparency
     """
     
+    # =========================================================================
+    # ENDF FLOATING POINT FORMAT PARSER
+    # =========================================================================
     # Regular expression to parse ENDF's "E-less" floating point format
-    # ENDF uses format like "1.23456+7" instead of "1.23456E+7"
+    # 
+    # ENDF uses a compact notation where the "E" in scientific notation is omitted:
+    #   Standard:  1.23456E+7  or  1.23456E-3
+    #   ENDF:      1.23456+7   or  1.23456-3
+    #
+    # This regex matches the pattern and converts it to standard Python float format.
+    # 
+    # Pattern breakdown:
+    #   ([\s\-\+]?\d*\.\d+)  = Mantissa (optionally signed, with decimal point)
+    #   ([\+\-])              = Exponent sign (+ or -)
+    #   ?(\d+)               = Exponent digits (optional space before)
+    #
+    # Example conversions:
+    #   " 1.234567+5"  →  "1.234567e+5"  →  123456.7
+    #   "-9.876543-3"  →  "-9.876543e-3" →  -0.009876543
+    #   " 0.000000+0"  →  "0.000000e+0"  →  0.0
+    #
     ENDF_FLOAT_RE = re.compile(r"([\s\-\+]?\d*\.\d+)([\+\-]) ?(\d+)")
     
     def __init__(self, text: Optional[str] = None):
@@ -196,23 +501,61 @@ class ENDFNumericDecayParser:
         self._raw_records = []
     
     def _readline(self) -> str:
+        """
+        Read one line from the ENDF file and advance position.
+        
+        Ensures line is exactly 80 characters (ENDF requirement) by padding
+        with spaces if necessary. Stores raw line for complete data retention.
+        
+        Returns:
+            str: 80-character ENDF line
+            
+        Raises:
+            EOFError: If attempting to read beyond end of file
+        """
         if self._pos >= len(self._lines):
             raise EOFError("EOF")
         line = self._lines[self._pos]
-        self._raw_records.append(line)  # Store raw line
+        self._raw_records.append(line)  # Store raw line for complete transparency
         self._pos += 1
+        # ENDF lines must be exactly 80 characters; pad if necessary
         return f"{line:<80}" if len(line) < 80 else line
     
     def _extract_line_metadata(self, line: str) -> Dict[str, int]:
-        """Extract MAT, MF, MT, and sequence number from ENDF line."""
+        """
+        Extract ENDF line metadata from fixed-width columns 67-80.
+        
+        ENDF Line Metadata Structure:
+        ------------------------------
+        Columns 67-70: MAT (Material number, 1-9999)
+                       Uniquely identifies the nuclide/isomer
+                       Example: MAT=837 for Br-74 ground state
+                       
+        Columns 71-72: MF (File type)
+                       MF=8 for radioactive decay data
+                       
+        Columns 73-75: MT (Section type)
+                       MT=457 for radioactive decay data
+                       
+        Columns 76-80: SEQ (Line sequence number within section)
+                       Starts at 1 for HEAD record
+        
+        Args:
+            line: 80-character ENDF line
+            
+        Returns:
+            Dict with keys: 'MAT', 'MF', 'MT', 'SEQ'
+            Returns zeros if parsing fails (for robustness)
+        """
         try:
             return {
-                'MAT': self._int_endf(line[66:70]),
-                'MF': self._int_endf(line[70:72]),
-                'MT': self._int_endf(line[72:75]),
-                'SEQ': self._int_endf(line[75:80])
+                'MAT': self._int_endf(line[66:70]),  # Material identifier
+                'MF': self._int_endf(line[70:72]),   # File type (8=decay)
+                'MT': self._int_endf(line[72:75]),   # Section type (457=decay)
+                'SEQ': self._int_endf(line[75:80])   # Sequence number
             }
         except:
+            # Return zeros on error for fault tolerance
             return {'MAT': 0, 'MF': 0, 'MT': 0, 'SEQ': 0}
     
     def _scan_to_mf_mt(self, mf: int, mt: int) -> bool:
@@ -230,10 +573,54 @@ class ENDFNumericDecayParser:
     
     @classmethod
     def _py_float_endf(cls, s: str) -> float:
+        """
+        Convert ENDF "E-less" floating point format to Python float.
+        
+        ENDF Floating Point Format:
+        ----------------------------
+        ENDF omits the "E" in scientific notation for compactness:
+          ENDF:     " 1.234567+5"  →  Python: 123456.7
+          ENDF:     "-9.876543-3"  →  Python: -0.009876543
+          Standard: " 1.234567E+5"
+        
+        The regex ENDF_FLOAT_RE converts:
+          "1.234567+5" → "1.234567e+5" (adds the 'e')
+        
+        Then Python's float() handles the conversion.
+        
+        Args:
+            s: ENDF-format float string (11 characters typical)
+            
+        Returns:
+            float: Converted value
+            
+        Example:
+            >>> _py_float_endf(" 6.907000+6")
+            6907000.0
+        """
+        # Substitute: mantissa + sign + digits → mantissa + 'e' + sign + digits
         return float(cls.ENDF_FLOAT_RE.sub(r"\1e\2\3", s))
     
     @staticmethod
     def _int_endf(s: str) -> int:
+        """
+        Convert ENDF integer field to Python int.
+        
+        ENDF integer fields may be blank (meaning zero) or contain an integer.
+        This function handles both cases safely.
+        
+        Args:
+            s: ENDF integer field string (typically 11 characters)
+            
+        Returns:
+            int: Converted value (0 if blank)
+            
+        Example:
+            >>> _int_endf("        10")
+            10
+            >>> _int_endf("          ")
+            0
+        """
         return 0 if s.strip() == "" else int(s)
     
     def _get_cont_record(self, skip_c=False):
@@ -602,20 +989,57 @@ def extract_bplus_branching(parsed_data):
     """
     Extract β+ branching ratio by summing individual β+ transition intensities.
     
-    ENDF-102 Manual Note:
-    For EC/β+ decay (RTYP=2.0), the total branching ratio includes BOTH:
-    - β+ emission (positron emission)
-    - Electron capture (EC)
+    ENDF-102 Reference: Section 8.1.3 - Decay Mode Data
     
-    To separate them:
-    1. β+ branching = sum of all individual β+ transition intensities
-    2. EC branching = Total branching - β+ branching
+    Physical Background:
+    --------------------
+    For EC/β+ decay (RTYP=2.0), a proton-rich nucleus can decay by two competing modes:
+    
+    1. Beta+ (β+) Emission:
+       p → n + e+ + νe
+       - Positron is emitted
+       - Requires Q > 1.022 MeV (2×electron mass)
+       - Produces 511 keV annihilation gammas
+    
+    2. Electron Capture (EC):
+       p + e- → n + νe
+       - Orbital electron captured
+       - No threshold (works even for low Q)
+       - Produces X-rays and Auger electrons
+    
+    ENDF Storage:
+    -------------
+    ENDF stores the TOTAL branching ratio for EC/β+ decay in the decay mode record.
+    To separate the two components, ENDF-102 specifies:
+    
+    1. Individual β+ transition intensities are stored in the beta+ spectrum (STYP=2)
+       as discrete LIST records. Each transition has:
+       - Endpoint energy (maximum β+ energy)
+       - Average energy (mean energy deposited)
+       - Intensity (percentage of decays via this transition)
+    
+    2. Sum all β+ intensities to get total β+ branching
+    
+    3. EC branching = Total branching - β+ branching
+    
+    Algorithm:
+    ----------
+    1. Find the beta+ spectrum (STYP=2) in the parsed data
+    2. Sum the INTENSITY field from all discrete transitions
+    3. If no discrete transitions, use FD (normalization factor) as fallback
+    4. Return total β+ branching as percentage
     
     Args:
-        parsed_data: Parsed decay data dictionary
+        parsed_data: Dictionary from _parse_mf8_mt457() containing:
+                     - "modes": List of decay modes
+                     - "spectra": List of radiation spectra
     
     Returns:
-        β+ branching ratio as a percentage (0-100)
+        float: β+ branching ratio as a percentage (0-100)
+               Returns 0.0 if no β+ spectrum found
+    
+    Example:
+        For Br-74: Total EC/β+ = 100%, β+ = 91.17%, EC = 8.83%
     """
     if "spectra" not in parsed_data:
         return 0.0
@@ -638,7 +1062,34 @@ def extract_bplus_branching(parsed_data):
 
 
 def format_halflife(halflife_seconds):
-    """Format half-life in human-readable units."""
+    """
+    Convert half-life from seconds to human-readable units.
+    
+    ENDF stores all half-lives in seconds (SI units), but for readability
+    this function converts to appropriate units based on magnitude.
+    
+    Conversion Thresholds:
+    ----------------------
+    < 60 seconds     → seconds
+    < 3600 seconds   → minutes
+    < 86400 seconds  → hours
+    < 31536000 sec   → days
+    ≥ 31536000 sec   → years
+    
+    Args:
+        halflife_seconds: Half-life in seconds (from ENDF T1/2 field)
+    
+    Returns:
+        str: Formatted half-life with units
+        
+    Examples:
+        >>> format_halflife(10.24 * 60)
+        "10.24 minutes"
+        >>> format_halflife(12.34 * 365.25 * 86400)
+        "12.34 years"
+        >>> format_halflife(0.0)
+        "STABLE"
+    """
     if halflife_seconds < 60:
         return f"{halflife_seconds:.2f} seconds"
     elif halflife_seconds < 3600:
@@ -1726,7 +2177,39 @@ def print_detailed_data(parsed_data):
 
 
 if __name__ == "__main__":
-    """Main execution block."""
+    """
+    ═══════════════════════════════════════════════════════════════════════════════
+    MAIN EXECUTION BLOCK - JEFF ENDF-6 Radioactive Decay Parser
+    ═══════════════════════════════════════════════════════════════════════════════
+    
+    Entry point for: python3 JEFF_ENDF_parser.py [options] <endf_file>
+    
+    WORKFLOW PHASES:
+    ----------------
+    1. Command-line argument parsing (--compact, --verbose, -o, filename)
+    2. File loading and validation
+    3. Section detection (scan for all MF=8 MT=457 HEAD records)
+    4. Independent parsing of each section (fault-tolerant)
+    5. Data verification and completeness checking
+    6. Formatted output generation (mode-dependent)
+    7. Console summary display
+    
+    ENDF FILE STRUCTURE (JEFF-4.0):
+    --------------------------------
+    - ~3852 decay sections across ~3084 nuclides
+    - Multiple MAT numbers per nuclide (for isomeric states)
+    - Each section contains complete decay data for one level
+    - Sections are independent and can appear in any order
+    
+    PARSER DESIGN:
+    --------------
+    - Universal: Works with ANY ENDF radioactive decay file
+    - Fault-tolerant: Continues on errors, maximizes data extraction
+    - Complete: Captures ALL isomeric states and ALL energy transitions
+    - Verifiable: Reports statistics and warns about gaps
+    
+    See ENDF-102 Section 8 for format specification.
+    """
     import sys
     import os
     
