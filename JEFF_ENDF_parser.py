@@ -1066,18 +1066,18 @@ def print_compact_summary_table(all_results):
         nuclides[za].append(result)
     
     print()
-    print("="*165)
+    print("="*220)
     print("COMPACT SUMMARY TABLE - ESSENTIAL DECAY DATA")
-    print("="*165)
+    print("="*220)
     print()
     print(f"Total nuclides: {len(nuclides)}")
     print(f"Total decay levels: {len(all_results)}")
     print()
     
-    # Compact header - exact formatting to match example
-    print(f"{'Z':>3s}  {'A':>5s}  {'Element':>5s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Half-life':>18s}  {'Q-value':>12s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
-    print(f"{'':>3s}  {'':>5s}  {'':>5s}  {'':>3s}  {'Name':>8s}  {'':>18s}  {'(keV)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
-    print("-"*165)
+    # Complete header with all columns
+    print(f"{'Z':>3s}  {'A':>5s}  {'Element':>5s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Spin':>6s}  {'Parity':>7s}  {'Parent Ex':>12s}  {'Half-life':>18s}  {'Decay':>8s}  {'Q-value':>12s}  {'Daughter':>10s}  {'RFS':>3s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
+    print(f"{'':>3s}  {'':>5s}  {'':>5s}  {'':>3s}  {'Name':>8s}  {'':>6s}  {'':>7s}  {'(keV)':>12s}  {'':>18s}  {'Type':>8s}  {'(keV)':>12s}  {'Nuclide':>10s}  {'':>3s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
+    print("-"*220)
     
     for za in sorted(nuclides.keys()):
         z = za // 1000
@@ -1087,6 +1087,15 @@ def print_compact_summary_table(all_results):
         for result in nuclides[za]:
             lis = result.get("LIS", 0)
             mat = result.get("MAT", 0)
+            
+            # Nuclear properties
+            spi = result.get("SPI", 0.0)
+            par = result.get("PAR", 0.0)
+            
+            # Parent excitation energy
+            parent_ex_kev = 0.0
+            if "Ex" in result and len(result["Ex"]) > 0:
+                parent_ex_kev = result["Ex"][0][0] / 1000.0 if result["Ex"][0][0] > 0 else 0.0
             
             # Nuclide name
             if lis == 0:
@@ -1105,8 +1114,42 @@ def print_compact_summary_table(all_results):
                 mode = result["modes"][0]
                 q_kev = mode["Q"][0] / 1000.0
                 rtyp = mode["RTYP"]
+                rfs = mode.get("RFS", 0.0)
                 total_br = mode["BR"][0]
                 total_br_pct = total_br * 100.0 if total_br <= 1.0 else total_br
+                
+                # Decay type
+                decay_type_map = {
+                    0.0: "γ",
+                    1.0: "β-",
+                    2.0: "EC/β+",
+                    3.0: "IT",
+                    4.0: "α",
+                    5.0: "n",
+                    6.0: "SF",
+                    7.0: "p"
+                }
+                decay_type = decay_type_map.get(rtyp, f"{rtyp:.0f}")
+                
+                # Daughter nuclide
+                if rtyp == 2.0:  # EC/β+
+                    daughter_z = z - 1
+                    daughter_a = a
+                elif rtyp == 1.0:  # β-
+                    daughter_z = z + 1
+                    daughter_a = a
+                elif rtyp == 4.0:  # α
+                    daughter_z = z - 2
+                    daughter_a = a - 4
+                elif rtyp == 0.0:  # γ
+                    daughter_z = z
+                    daughter_a = a
+                else:
+                    daughter_z = z
+                    daughter_a = a
+                
+                daughter_element = ATOMIC_SYMBOL.get(daughter_z, f'Z{daughter_z}')
+                daughter_name = f"{daughter_element}-{daughter_a}"
                 
                 bplus_br_pct = extract_bplus_branching(result)
                 ec_br_pct = total_br_pct - bplus_br_pct
@@ -1128,6 +1171,9 @@ def print_compact_summary_table(all_results):
                         elif styp == 4:
                             mean_alpha = er_av_kev
             else:
+                decay_type = "STABLE"
+                daughter_name = "-"
+                rfs = 0.0
                 q_kev = 0.0
                 bplus_br_pct = 0.0
                 ec_br_pct = 0.0
@@ -1135,12 +1181,12 @@ def print_compact_summary_table(all_results):
                 mean_beta = 0.0
                 mean_gamma = 0.0
             
-            # Print compact row - exact formatting to match example
-            print(f"{z:>3d}  {a:>5d}  {element:>5s}  {lis:>3d}  {nuclide_name:>8s}  {halflife_str:>18s}  {q_kev:>12.4e}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {mean_alpha:>12.4e}  {mean_beta:>12.4e}  {mean_gamma:>12.4e}  {mat:>5d}")
+            # Print complete row with all columns
+            print(f"{z:>3d}  {a:>5d}  {element:>5s}  {lis:>3d}  {nuclide_name:>8s}  {spi:>6.1f}  {par:>7.1f}  {parent_ex_kev:>12.4e}  {halflife_str:>18s}  {decay_type:>8s}  {q_kev:>12.4e}  {daughter_name:>10s}  {rfs:>3.0f}  {bplus_br_pct:>12.4e}  {ec_br_pct:>12.4e}  {mean_alpha:>12.4e}  {mean_beta:>12.4e}  {mean_gamma:>12.4e}  {mat:>5d}")
     
-    print("-"*165)
+    print("-"*220)
     print()
-    print("="*165)
+    print("="*220)
     print()
 
 
