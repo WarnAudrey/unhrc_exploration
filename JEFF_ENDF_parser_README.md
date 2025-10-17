@@ -104,16 +104,16 @@ This parser extracts **100% of fields** specified in ENDF-102 Section 8.1:
 
 | Field Category | Coverage |
 |----------------|----------|
-| Header (ZA, AWR, LIS, LISO, NST, NSP) | ✅ 6/6 |
-| Half-life data | ✅ Complete |
-| Decay modes | ✅ Complete |
-| Gamma spectra | ✅ Complete (including M+ shell ICC) |
-| Beta+ spectra | ✅ Complete (including average energy) |
-| Alpha spectra | ✅ Complete (including hindrance factors) |
-| X-ray spectra | ✅ Complete |
-| Auger spectra | ✅ Complete |
-| Continuous spectra | ✅ Complete |
-| Covariance matrices | ✅ Complete |
+| Header (ZA, AWR, LIS, LISO, NST, NSP) | 6/6 |
+| Half-life data | Complete |
+| Decay modes | Complete |
+| Gamma spectra | Complete (including M+ shell ICC) |
+| Beta+ spectra | Complete (including average energy) |
+| Alpha spectra | Complete (including hindrance factors) |
+| X-ray spectra | Complete |
+| Auger spectra | Complete |
+| Continuous spectra | Complete |
+| Covariance matrices | Complete |
 
 ## Documentation
 

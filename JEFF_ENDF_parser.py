@@ -87,15 +87,13 @@ This parser automatically detects and processes ALL isomeric states.
 DATA EXTRACTION
 ---------------
 **COMPLETE ENERGY EXTRACTION - ALL Individual Transitions:**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ EVERY beta+ transition energy, intensity, and average energy
-✓ EVERY gamma ray energy, absolute/relative intensity, conversion coefficients
-✓ EVERY X-ray and Auger electron energy and intensity
-✓ COMPLETE continuous energy spectra (all tabulated points)
-✓ Energy-sorted distributions across all radiation types
-✓ Mean energies, Q-values, and decay statistics
-✓ Raw ENDF record data and metadata (verbose mode)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- EVERY beta+ transition energy, intensity, and average energy
+- EVERY gamma ray energy, absolute/relative intensity, conversion coefficients
+- EVERY X-ray and Auger electron energy and intensity
+- COMPLETE continuous energy spectra (all tabulated points)
+- Energy-sorted distributions across all radiation types
+- Mean energies, Q-values, and decay statistics
+- Raw ENDF record data and metadata (verbose mode)
 
 **Also captures complete ENDF metadata:**
 - All header/comment lines
@@ -168,20 +166,20 @@ ENDF-102 COMPLIANCE VERIFICATION
 This parser has been verified against ENDF-102 (2023 revision) Section 8.1.
 
 ALL fields specified in ENDF-102 Section 8 are captured:
-✅ HEAD record: ZA, AWR, LIS, LISO, NST, NSP (6/6 fields)
-✅ Half-life LIST: T1/2, dT1/2, NC, Ex arrays (all fields)
-✅ Decay mode LIST: SPI, PAR, NDK, mode arrays (all fields)
-✅ Mode data: RTYP, RFS, Q, dQ, BR, dBR (6/6 per mode)
-✅ Spectrum summary: STYP, LCON, LCOV, NER, FD, ER_AV, FC (all fields)
-✅ Gamma discrete: ER, RTYP, TYPE, RI, RIS, RICC, RICK, RICL, RICM + higher shells
-✅ Beta+ discrete: ER, RTYP, TYPE, E_AVG, IB + additional parameters
-✅ Alpha discrete: ER, RTYP, TYPE, RI, HF + additional parameters
-✅ X-ray discrete: ER, RTYP, TYPE, RI + additional parameters
-✅ Auger discrete: ER, RTYP, TYPE, RI + additional parameters
-✅ Continuous spectra: Complete TAB1 with all (x,y) points and interpolation
-✅ Covariance: Both continuous and discrete covariance matrices
-✅ Raw records: All original ENDF text lines preserved
-✅ Metadata: MAT, MF, MT, SEQ for every record
+- HEAD record: ZA, AWR, LIS, LISO, NST, NSP (6/6 fields)
+- Half-life LIST: T1/2, dT1/2, NC, Ex arrays (all fields)
+- Decay mode LIST: SPI, PAR, NDK, mode arrays (all fields)
+- Mode data: RTYP, RFS, Q, dQ, BR, dBR (6/6 per mode)
+- Spectrum summary: STYP, LCON, LCOV, NER, FD, ER_AV, FC (all fields)
+- Gamma discrete: ER, RTYP, TYPE, RI, RIS, RICC, RICK, RICL, RICM + higher shells
+- Beta+ discrete: ER, RTYP, TYPE, E_AVG, IB + additional parameters
+- Alpha discrete: ER, RTYP, TYPE, RI, HF + additional parameters
+- X-ray discrete: ER, RTYP, TYPE, RI + additional parameters
+- Auger discrete: ER, RTYP, TYPE, RI + additional parameters
+- Continuous spectra: Complete TAB1 with all (x,y) points and interpolation
+- Covariance: Both continuous and discrete covariance matrices
+- Raw records: All original ENDF text lines preserved
+- Metadata: MAT, MF, MT, SEQ for every record
 
 Field Coverage: 100% (ALL ENDF-102 Section 8.1 fields captured)
 
@@ -1129,87 +1127,87 @@ class ENDFNumericDecayParser:
         
         Record 1: HEAD (Section 8.1.1)
         --------------------------------
-        ✅ ZA    - Nuclide identifier (Z*1000 + A)
-        ✅ AWR   - Atomic weight ratio
-        ✅ LIS   - Isomeric state (0=ground, 1=1st excited, ...)
-        ✅ LISO  - Isomeric flag (0=ground, 1=excited)
-        ✅ NST   - Stability (0=radioactive, 1=stable)
-        ✅ NSP   - Number of radiation spectra
+        - ZA    - Nuclide identifier (Z*1000 + A)
+        - AWR   - Atomic weight ratio
+        - LIS   - Isomeric state (0=ground, 1=1st excited, ...)
+        - LISO  - Isomeric flag (0=ground, 1=excited)
+        - NST   - Stability (0=radioactive, 1=stable)
+        - NSP   - Number of radiation spectra
         
         Record 2: Half-life LIST (Section 8.1.2)
         ------------------------------------------
-        ✅ T1/2, dT1/2 - Half-life with uncertainty (seconds)
-        ✅ NC          - Number of daughter excitation states
-        ✅ Ex, dEx     - Excitation energies with uncertainties (eV)
+        - T1/2, dT1/2 - Half-life with uncertainty (seconds)
+        - NC          - Number of daughter excitation states
+        - Ex, dEx     - Excitation energies with uncertainties (eV)
         
         Record 3: Decay Modes LIST (Section 8.1.3)
         --------------------------------------------
-        ✅ SPI   - Nuclear spin
-        ✅ PAR   - Parity (±1)
-        ✅ NDK   - Number of decay modes
+        - SPI   - Nuclear spin
+        - PAR   - Parity (±1)
+        - NDK   - Number of decay modes
         For each mode (6 values):
-          ✅ RTYP     - Decay type (0=γ, 1=β-, 2=EC/β+, 4=α, 5=n, 6=SF, 7=p)
-          ✅ RFS      - Daughter isomeric state
-          ✅ Q, dQ    - Q-value with uncertainty (eV)
-          ✅ BR, dBR  - Branching ratio with uncertainty
+          - RTYP     - Decay type (0=γ, 1=β-, 2=EC/β+, 4=α, 5=n, 6=SF, 7=p)
+          - RFS      - Daughter isomeric state
+          - Q, dQ    - Q-value with uncertainty (eV)
+          - BR, dBR  - Branching ratio with uncertainty
         
         Records 4+: Radiation Spectra (Section 8.1.4)
         -----------------------------------------------
         For each of NSP spectra:
         
         Summary LIST:
-          ✅ STYP        - Spectrum type (0=γ, 2=β+, 4=α, 8=X, 9=Auger)
-          ✅ LCON        - Continuum flag (0=both, 1=continuous, 2=discrete)
-          ✅ LCOV        - Covariance flag
-          ✅ NER         - Number of discrete transitions
-          ✅ FD, dFD     - Discrete normalization
-          ✅ ER_AV, dER_AV - Mean energy with uncertainty (eV)
-          ✅ FC, dFC     - Continuum normalization
+          - STYP        - Spectrum type (0=γ, 2=β+, 4=α, 8=X, 9=Auger)
+          - LCON        - Continuum flag (0=both, 1=continuous, 2=discrete)
+          - LCOV        - Covariance flag
+          - NER         - Number of discrete transitions
+          - FD, dFD     - Discrete normalization
+          - ER_AV, dER_AV - Mean energy with uncertainty (eV)
+          - FC, dFC     - Continuum normalization
         
         Discrete Transitions (NER records):
-          ✅ ER, dER     - Transition energy with uncertainty (eV)
-          ✅ RTYP        - Decay mode producing this radiation
-          ✅ TYPE        - Transition type
+          - ER, dER     - Transition energy with uncertainty (eV)
+          - RTYP        - Decay mode producing this radiation
+          - TYPE        - Transition type
           
           For Gammas (STYP=0):
-            ✅ RI, dRI     - Absolute intensity (γ/100 decays)
-            ✅ RIS, dRIS   - Relative intensity
-            ✅ RICC, dRICC - Total internal conversion coefficient
-            ✅ RICK, dRICK - K-shell ICC
-            ✅ RICL, dRICL - L-shell ICC
-            ✅ RICM, dRICM - M-shell ICC
-            ✅ Additional shells (N, O, P, ...) if present
+            - RI, dRI     - Absolute intensity (γ/100 decays)
+            - RIS, dRIS   - Relative intensity
+            - RICC, dRICC - Total internal conversion coefficient
+            - RICK, dRICK - K-shell ICC
+            - RICL, dRICL - L-shell ICC
+            - RICM, dRICM - M-shell ICC
+            - Additional shells (N, O, P, ...) if present
           
           For Beta+ (STYP=2):
-            ✅ E_AVG, dE_AVG - Average energy (keV)
-            ✅ IB, dIB       - Intensity (β+/100 decays)
-            ✅ Additional parameters (shape factors, etc.)
+            - E_AVG, dE_AVG - Average energy (keV)
+            - IB, dIB       - Intensity (β+/100 decays)
+            - Additional parameters (shape factors, etc.)
           
           For Alpha (STYP=4):
-            ✅ RI, dRI     - Intensity (α/100 decays)
-            ✅ HF, dHF     - Hindrance factor (optional)
+            - RI, dRI     - Intensity (α/100 decays)
+            - HF, dHF     - Hindrance factor (optional)
           
           For X-rays (STYP=8) and Auger (STYP=9):
-            ✅ RI, dRI     - Intensity (particles/100 decays)
+            - RI, dRI     - Intensity (particles/100 decays)
         
         Continuous Spectrum (if LCON≠2):
-          ✅ TAB1 with complete (energy, probability) pairs
-          ✅ Interpolation schemes and breakpoints
-          ✅ All tabulated points
+          - TAB1 with complete (energy, probability) pairs
+          - Interpolation schemes and breakpoints
+          - All tabulated points
         
         Covariance Data (if LCOV≠0):
-          ✅ Continuous spectrum covariance (LIST)
-          ✅ Discrete spectrum covariance (LIST)
-          ✅ Correlation matrices
+          - Continuous spectrum covariance (LIST)
+          - Discrete spectrum covariance (LIST)
+          - Correlation matrices
         
         Additional Data Captured:
         -------------------------
-        ✅ Raw ENDF line text for all records
-        ✅ Line metadata (MAT, MF, MT, SEQ) for all records
-        ✅ Complete unprocessed value arrays
-        ✅ All CONT/LIST/TAB1 parameters
+        - Raw ENDF line text for all records
+        - Line metadata (MAT, MF, MT, SEQ) for all records
+        - Complete unprocessed value arrays
+        - All CONT/LIST/TAB1 parameters
         
-        VERIFICATION: 100% of ENDF-102 Section 8.1 fields captured ✅
+        VERIFICATION: 100% of ENDF-102 Section 8.1 fields captured
         
         Returns:
         --------
@@ -1702,7 +1700,7 @@ def verify_all_levels(all_results):
                 print(f"  ⚠ WARNING: Possible missing levels - expected LIS values {expected_lis}, found {lis_values}")
                 print(f"            Missing LIS: {sorted(missing)}")
         else:
-            print(f"  ✓ Level sequence is complete (LIS 0 through {len(states)-1})")
+            print(f"  Level sequence is complete (LIS 0 through {len(states)-1})")
         
         for state in states_sorted:
             lis = state["LIS"]
@@ -2674,7 +2672,7 @@ def format_and_print_table(parsed_data):
     print(f"  Total Branching Ratio: {total_br_pct:.4f}%")
     print(f"  β+ Branching: {bplus_br_pct:.4f}%")
     print(f"  EC Branching: {ec_br_pct:.4f}%")
-    print(f"  511 keV annihilation peak: {'FOUND ✓' if has_511_peak else 'Not detected in discrete list'}")
+    print(f"  511 keV annihilation peak: {'FOUND' if has_511_peak else 'Not detected in discrete list'}")
     print()
     
     print("Mean Radiation Energies:")
@@ -2915,9 +2913,9 @@ def print_detailed_data(parsed_data):
 
 if __name__ == "__main__":
     """
-    ═══════════════════════════════════════════════════════════════════════════════
+    ===============================================================================
     MAIN EXECUTION BLOCK - JEFF ENDF-6 Radioactive Decay Parser
-    ═══════════════════════════════════════════════════════════════════════════════
+    ===============================================================================
     
     Entry point for: python3 JEFF_ENDF_parser.py [options] <endf_file>
     
@@ -2980,12 +2978,12 @@ if __name__ == "__main__":
         print("="*80)
         print()
         print("This parser extracts ALL energy information from ENDF files:")
-        print("  ✓ Individual beta+ transition energies and intensities")
-        print("  ✓ Individual gamma ray energies and intensities")
-        print("  ✓ X-ray and Auger electron energies")
-        print("  ✓ Continuous energy spectra (full distributions)")
-        print("  ✓ Mean energies and Q-values")
-        print("  ✓ Complete raw record data")
+        print("  - Individual beta+ transition energies and intensities")
+        print("  - Individual gamma ray energies and intensities")
+        print("  - X-ray and Auger electron energies")
+        print("  - Continuous energy spectra (full distributions)")
+        print("  - Mean energies and Q-values")
+        print("  - Complete raw record data")
         print()
         print("Usage:")
         print("  python3 JEFF_ENDF_parser.py <endf_file.endf>                    # All energies")
@@ -3074,7 +3072,7 @@ if __name__ == "__main__":
                 parsed_sections[(za, lis)] = mat_num
                 
                 all_results.append(result)
-                print(f"✓ Successfully parsed MAT={mat_num}, ZA={za}, LIS={lis}")
+                print(f"Successfully parsed MAT={mat_num}, ZA={za}, LIS={lis}")
                 
             except (EOFError, IndexError, ValueError) as e:
                 print(f"⚠ WARNING: Skipped MAT={mat_num} (incomplete data): {str(e)[:60]}")
@@ -3083,7 +3081,7 @@ if __name__ == "__main__":
                 print(f"✗ ERROR: Failed to parse MAT={mat_num}: {str(e)[:60]}")
                 continue
         
-        print(f"\n📊 Parsing Summary:")
+        print(f"\nParsing Summary:")
         print(f"   Total sections found: {len(section_info)}")
         print(f"   Successfully parsed: {len(all_results)}")
         print(f"   Failed/skipped: {len(section_info) - len(all_results)}")
@@ -3163,13 +3161,13 @@ if __name__ == "__main__":
             sys.stdout = original_stdout
             raise
         
-        print(f"✓ Successfully parsed: {input_file}")
-        print(f"✓ Output saved to: {output_file}")
-        print(f"✓ Found {len(all_results)} decay state(s)")
+        print(f"Successfully parsed: {input_file}")
+        print(f"Output saved to: {output_file}")
+        print(f"Found {len(all_results)} decay state(s)")
         if verbose:
-            print(f"✓ Mode: Full details (all transitions)")
+            print(f"Mode: Full details (all transitions)")
         else:
-            print(f"✓ Mode: Summary view")
+            print(f"Mode: Summary view")
         
         for result in all_results:
             za = result["ZA"]
