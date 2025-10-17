@@ -650,40 +650,186 @@ class ENDFNumericDecayParser:
         return 0 if s.strip() == "" else int(s)
     
     def _get_cont_record(self, skip_c=False):
+        """
+        Read a CONT (control) record: most basic ENDF record type.
+        
+        CONT Record Structure (ENDF-102):
+        ----------------------------------
+        All ENDF records are 80 characters wide with this layout:
+        [C1(11) C2(11) L1(11) L2(11) N1(11) N2(11) MAT(4) MF(2) MT(3) SEQ(5)]
+        
+        Field breakdown:
+          Columns 1-66:  Data fields (six 11-character fields)
+            C1, C2 = floating-point parameters (meaning varies by context)
+            L1, L2 = integer flags (meaning varies by context)
+            N1, N2 = integer parameters (meaning varies by context)
+          
+          Columns 67-80: Metadata (always present)
+            MAT = Material number (identifies nuclide/material)
+            MF  = File number (identifies data type, e.g., 8=decay)
+            MT  = Section number (identifies subsection, e.g., 457=decay data)
+            SEQ = Sequence number (line counter within section)
+        
+        CONT records are used to provide control parameters for subsequent
+        records or to store simple 6-value data.
+        
+        Parameters:
+        -----------
+        skip_c : bool
+            If True, skip parsing C1 and C2 (return None for both).
+            Optimization for cases where only integer fields are needed.
+        
+        Returns:
+        --------
+        tuple: (C1, C2, L1, L2, N1, N2, metadata)
+          C1, C2       = float parameters (or None if skip_c=True)
+          L1, L2       = integer flags
+          N1, N2       = integer parameters
+          metadata     = dict with {MAT, MF, MT, SEQ}
+        """
+        # Read one 80-character line from file
         line = self._readline()
-        c1 = None if skip_c else self._py_float_endf(line[:11])
-        c2 = None if skip_c else self._py_float_endf(line[11:22])
-        l1 = self._int_endf(line[22:33])
-        l2 = self._int_endf(line[33:44])
-        n1 = self._int_endf(line[44:55])
-        n2 = self._int_endf(line[55:66])
+        
+        # Parse six 11-character data fields (columns 1-66)
+        # Each field is right-justified within its 11-character space
+        c1 = None if skip_c else self._py_float_endf(line[:11])      # Column 1-11
+        c2 = None if skip_c else self._py_float_endf(line[11:22])    # Column 12-22
+        l1 = self._int_endf(line[22:33])         # Column 23-33: first integer flag
+        l2 = self._int_endf(line[33:44])         # Column 34-44: second integer flag
+        n1 = self._int_endf(line[44:55])         # Column 45-55: first integer parameter
+        n2 = self._int_endf(line[55:66])         # Column 56-66: second integer parameter
+        
+        # Extract metadata from columns 67-80
         metadata = self._extract_line_metadata(line)
+        
+        # Return all fields plus metadata
         return c1, c2, l1, l2, n1, n2, metadata
     
     def _get_head_record(self):
+        """
+        Read a HEAD (header) record: first line of every ENDF section.
+        
+        HEAD Record Structure (ENDF-102):
+        ----------------------------------
+        Same 80-character format as CONT, but with specific meaning:
+        [ZA(11) AWR(11) L1(11) L2(11) N1(11) N2(11) MAT(4) MF(2) MT(3) SEQ(5)]
+        
+        For MF=8 MT=457 (decay data), HEAD contains:
+          ZA  = Nuclide identifier: Z*1000 + A
+                Example: 92235 for U-235 (Z=92, A=235)
+          AWR = Atomic Weight Ratio (nuclide mass / neutron mass)
+                Example: 235.0439 for U-235
+          L1  = LIS (Isomeric State): 0=ground, 1=1st excited, 2=2nd, ...
+          L2  = LISO (Isomeric Flag): 0=ground state, 1=excited state
+          N1  = NST (Stability): 0=radioactive, 1=stable
+          N2  = NSP (Number of radiation Spectra)
+        
+        HEAD always appears as the first record of a section and identifies
+        what material/nuclide the following data describes.
+        
+        Returns:
+        --------
+        tuple: (ZA, AWR, L1, L2, N1, N2, metadata)
+          ZA       = int, nuclide identifier (Z*1000 + A)
+          AWR      = float, atomic weight ratio
+          L1       = int, isomeric state number
+          L2       = int, isomeric flag
+          N1       = int, stability flag
+          N2       = int, number of spectra
+          metadata = dict with {MAT, MF, MT, SEQ}
+        """
+        # Read one 80-character line from file
         line = self._readline()
-        za = int(self._py_float_endf(line[:11]))
-        awr = self._py_float_endf(line[11:22])
-        l1 = self._int_endf(line[22:33])
-        l2 = self._int_endf(line[33:44])
-        n1 = self._int_endf(line[44:55])
-        n2 = self._int_endf(line[55:66])
+        
+        # Parse HEAD-specific fields (columns 1-66)
+        # ZA is stored as float in ENDF but represents integer, so convert
+        za = int(self._py_float_endf(line[:11]))     # Column 1-11: ZA (Z*1000 + A)
+        awr = self._py_float_endf(line[11:22])       # Column 12-22: Atomic Weight Ratio
+        l1 = self._int_endf(line[22:33])             # Column 23-33: LIS (isomeric state)
+        l2 = self._int_endf(line[33:44])             # Column 34-44: LISO (isomeric flag)
+        n1 = self._int_endf(line[44:55])             # Column 45-55: NST (stability flag)
+        n2 = self._int_endf(line[55:66])             # Column 56-66: NSP (number of spectra)
+        
+        # Extract metadata from columns 67-80
         metadata = self._extract_line_metadata(line)
+        
+        # Return all fields plus metadata
         return za, awr, l1, l2, n1, n2, metadata
     
     def _get_list_record(self):
+        """
+        Read a LIST record: array of floating-point values.
+        
+        LIST Record Structure (ENDF-102):
+        ----------------------------------
+        Line 1: CONT record [C1  C2  L1  L2  NPL  N2  MAT MF MT SEQ]
+          C1, C2 = parameters (meaning varies by context)
+          L1, L2 = flags (meaning varies by context)
+          NPL    = Number of items in list (field 5)
+          N2     = additional parameter (field 6)
+        
+        Lines 2+: List data (NPL floating-point values)
+          Each line contains 6 values in 11-character fields
+          Total lines needed: ceil(NPL / 6)
+        
+        Example: If NPL=20, we need 4 lines:
+          Line 2: values 1-6
+          Line 3: values 7-12
+          Line 4: values 13-18
+          Line 5: values 19-20 (partial line)
+        
+        Usage in MF=8 MT=457:
+        ---------------------
+        LIST records are used for:
+        - Half-life data (T1/2, NC, Ex[])
+        - Decay mode data (SPI, PAR, NDK, mode arrays)
+        - Spectrum summary (STYP, LCON, NER, FD, ER_AV, FC)
+        - Discrete transition data (energies, intensities, coefficients)
+        - Covariance data
+        
+        Returns:
+        --------
+        tuple: (items, values_array, metadata, raw_lines)
+          items        = list [C1, C2, L1, L2, NPL, N2]
+          values_array = numpy array of NPL float values
+          metadata     = dict with {MAT, MF, MT, SEQ}
+          raw_lines    = list of original ENDF text lines
+        """
+        # ========================================
+        # STEP 1: Read CONT record (header)
+        # ========================================
         items_tuple = self._get_cont_record()
-        items = list(items_tuple[:6])  # First 6 are the actual data
+        items = list(items_tuple[:6])  # [C1, C2, L1, L2, NPL, N2]
         metadata = items_tuple[6] if len(items_tuple) > 6 else {}
+        
+        # Number of list values from field 5 (NPL = Number of Parameters in List)
         npl = int(items[4])
+        
+        # ========================================
+        # STEP 2: Read list values
+        # ========================================
+        # Allocate array for all values
         b = np.empty(npl)
-        list_lines = []
+        list_lines = []  # Store raw ENDF lines
+        
+        # Each line holds up to 6 values (6 × 11-char fields = 66 chars)
+        # Calculate number of lines needed: ceil(npl / 6)
         for i in range((npl - 1) // 6 + 1):
             line = self._readline()
             list_lines.append(line)
+            
+            # Determine how many values on this line
+            # Most lines have 6, but last line may have fewer
             n = min(6, npl - 6 * i)
+            
+            # Extract each value from its 11-character field
             for j in range(n):
-                b[6 * i + j] = self._py_float_endf(line[11 * j : 11 * (j + 1)])
+                # Position: j-th field (0-indexed) starts at column 11*j
+                start_col = 11 * j
+                end_col = 11 * (j + 1)
+                b[6 * i + j] = self._py_float_endf(line[start_col:end_col])
+        
+        # Return header parameters, data array, metadata, and raw lines
         return items, b, metadata, list_lines
     
     def _get_tab1_record(self):
@@ -857,31 +1003,116 @@ class ENDFNumericDecayParser:
         return params, Tabulated2D(breakpoints, interpolation), metadata, tab2_lines
     
     def _get_intg_record(self):
+        """
+        Parse an INTG record: compact correlation matrix.
+        
+        INTG Structure (ENDF-102):
+        ---------------------------
+        Line 1: CONT record [C1  C2  NDIGIT  NPAR  NLINES  0  MAT MF MT SEQ]
+          C1, C2 = parameters (usually 0)
+          NDIGIT = number of digits per matrix element (2-6)
+          NPAR   = dimension of correlation matrix (NPAR × NPAR)
+          NLINES = number of data lines to follow
+        
+        Lines 2+: Packed correlation coefficients
+          Format: [II(5) JJ(5) data...]
+            II = row index (1-based)
+            JJ = starting column index (1-based)
+            data = packed integers representing correlation coefficients
+        
+        Matrix Storage:
+        ---------------
+        - Only lower triangle is stored (matrix is symmetric)
+        - Diagonal elements are 1.0 (not stored)
+        - Coefficients are stored as integers: coeff = (INT ± 0.5) / 10^NDIGIT
+        - Sign convention: + for positive, - for negative
+        
+        Number of elements per line depends on NDIGIT:
+          NDIGIT=2 → 18 elements/line (each is 3 chars + 1 space)
+          NDIGIT=3 → 12 elements/line (each is 4 chars + 1 space)
+          NDIGIT=4 → 11 elements/line (each is 5 chars + 1 space)
+          NDIGIT=5 →  9 elements/line (each is 6 chars + 1 space)
+          NDIGIT=6 →  8 elements/line (each is 7 chars + 1 space)
+        
+        Returns:
+        --------
+        tuple: (correlation_matrix, metadata, raw_lines)
+          correlation_matrix = NPAR×NPAR symmetric matrix with 1's on diagonal
+          metadata          = {MAT, MF, MT, SEQ}
+          raw_lines         = original ENDF text lines
+        """
+        # ========================================
+        # STEP 1: Read CONT record (header)
+        # ========================================
         items_tuple = self._get_cont_record()
-        items = list(items_tuple[:6])
+        items = list(items_tuple[:6])  # [C1, C2, NDIGIT, NPAR, NLINES, 0]
         metadata = items_tuple[6] if len(items_tuple) > 6 else {}
-        ndigit = items[2]
-        npar = items[3]
-        nlines = items[4]
+        
+        # Extract key parameters
+        ndigit = items[2]   # Number of digits per matrix element
+        npar = items[3]     # Matrix dimension (NPAR × NPAR)
+        nlines = items[4]   # Number of data lines to read
+        
+        # ========================================
+        # STEP 2: Determine packing density
+        # ========================================
+        # Each element occupies (NDIGIT + 1) characters (digits + space)
+        # After II(5) + JJ(5) = 10 chars, we have 66 chars for data
+        # Number of elements per line = floor(66 / (NDIGIT + 1))
         nrow_rules = {2: 18, 3: 12, 4: 11, 5: 9, 6: 8}
-        nrow = nrow_rules[ndigit]
+        nrow = nrow_rules[ndigit]  # Elements per line
+        
+        # ========================================
+        # STEP 3: Initialize identity matrix
+        # ========================================
+        # Start with identity matrix (diagonal = 1.0)
+        # We'll fill in the off-diagonal elements below
         corr = np.identity(npar)
         intg_lines = []
+        
+        # ========================================
+        # STEP 4: Read and decode matrix elements
+        # ========================================
         for _ in range(nlines):
             line = self._readline()
             intg_lines.append(line)
-            ii = self._int_endf(line[:5]) - 1
-            jj = self._int_endf(line[5:10]) - 1
+            
+            # Extract row and column indices (1-based in ENDF, convert to 0-based)
+            ii = self._int_endf(line[:5]) - 1       # Row index (0-based)
+            jj = self._int_endf(line[5:10]) - 1     # Starting column index (0-based)
+            
+            # Scaling factor for converting integers to floats
             factor = 10 ** ndigit
+            
+            # Read up to NROW elements from this line
             for j in range(nrow):
+                # Stop if we've reached the diagonal (only lower triangle stored)
                 if jj + j >= ii:
                     break
-                element = self._int_endf(line[11 + (ndigit + 1) * j : 11 + (ndigit + 1) * (j + 1)])
+                
+                # Extract integer from packed format
+                # Position: starts at char 11 (index 10), each element is (NDIGIT+1) chars
+                start_col = 11 + (ndigit + 1) * j
+                end_col = 11 + (ndigit + 1) * (j + 1)
+                element = self._int_endf(line[start_col:end_col])
+                
+                # Convert integer to correlation coefficient
+                # ENDF stores: INT = round(coeff * 10^NDIGIT)
+                # We decode: coeff = (INT ± 0.5) / 10^NDIGIT
+                # The ±0.5 handles rounding convention in ENDF
                 if element > 0:
-                    corr[ii, jj] = (element + 0.5) / factor
+                    corr[ii, jj + j] = (element + 0.5) / factor
                 elif element < 0:
-                    corr[ii, jj] = (element - 0.5) / factor
+                    corr[ii, jj + j] = (element - 0.5) / factor
+                # If element == 0, correlation is exactly 0.0 (already in matrix)
+        
+        # ========================================
+        # STEP 5: Symmetrize the matrix
+        # ========================================
+        # We've only filled lower triangle; make it symmetric
+        # corr = lower + upper - diagonal (to avoid double-counting diagonal)
         corr = corr + corr.T - np.diag(corr.diagonal())
+        
         return corr, metadata, intg_lines
     
     def _parse_mf8_mt457(self) -> Dict[str, Any]:
@@ -1903,7 +2134,46 @@ def print_energy_distribution_summary(all_results):
 
 
 def print_compact_summary_table(all_results):
-    """Print a compact summary table with essential fields only."""
+    """
+    Print a compact summary table with essential decay data fields.
+    
+    This function produces a concise, human-readable table with the most
+    important decay parameters for each nuclide/isomeric state.
+    
+    Table Columns (18 total):
+    --------------------------
+    1. Z             - Atomic number (proton count)
+    2. A             - Mass number (proton + neutron count)
+    3. Element       - Chemical symbol (e.g., U, Pu, Am)
+    4. Level         - Isomeric state (0=ground, 1=first excited, ...)
+    5. Nuclide       - Full identifier (e.g., U-235, Am-241m)
+    6. Half-life     - Decay half-life (auto-scaled: s/min/hr/d/yr)
+    7. Q-value       - Total decay energy (MeV)
+    8. B+ Branch     - Beta+ branching ratio (%)
+    9. EC Branch     - Electron capture branching ratio (%)
+    10. Mean α       - Mean alpha particle energy (MeV)
+    11. Mean β       - Mean beta/positron energy (MeV)
+    12. Mean γ       - Mean gamma ray energy (MeV)
+    13. MAT          - ENDF material number
+    
+    Data Processing:
+    ----------------
+    - Half-lives: Automatically formatted with appropriate units
+    - Energies: Converted from eV to MeV for readability
+    - Branching ratios: Calculated from spectrum intensities
+    - Missing data: Shown as dashes (---) when not available
+    - Stable nuclides: Half-life shown as "STABLE"
+    
+    Parameters:
+    -----------
+    all_results : list of dict
+        Parsed decay data for all nuclides from ENDF file.
+        Each dict contains keys: ZA, AWR, LIS, T1/2, modes, spectra, etc.
+    
+    Output:
+    -------
+    Prints formatted table to stdout (or to redirected file stream).
+    """
     
     if not all_results:
         print("No data to display")
@@ -2042,7 +2312,61 @@ def print_compact_summary_table(all_results):
 
 
 def format_and_print_combined_table(all_results, compact_only=False):
-    """Generate and print combined formatted table for all decay levels and nuclides."""
+    """
+    Generate and print formatted output for all parsed decay data.
+    
+    This is the master output function that coordinates all output generation.
+    It produces different levels of detail based on the compact_only flag.
+    
+    Output Modes:
+    -------------
+    1. **Compact Mode** (compact_only=True):
+       - Single summary table with essential fields (18 columns)
+       - One row per nuclide/isomeric state
+       - Best for: Quick overview, large datasets, spreadsheet import
+       - Output size: ~100 lines per 1000 nuclides
+    
+    2. **Full Mode** (compact_only=False):
+       - Summary table (same as compact)
+       - PLUS: All individual transition energies for each nuclide
+       - PLUS: Sorted energy distribution summaries
+       - Best for: Detailed analysis, physics validation, complete data extraction
+       - Output size: ~1000+ lines per nuclide (depends on transitions)
+    
+    Workflow:
+    ---------
+    1. Print compact summary table (always)
+    2. If full mode: Print detailed energy information per nuclide
+       a. Gamma ray transitions (energy, intensity, ICC values)
+       b. Beta+ transitions (endpoint, average, intensity)
+       c. Alpha particles (energy, intensity, hindrance factors)
+       d. X-rays (energy, intensity)
+       e. Auger electrons (energy, intensity)
+       f. Continuous spectra (tabulated distributions)
+    3. If full mode: Print sorted energy distribution summaries
+    
+    Parameters:
+    -----------
+    all_results : list of dict
+        Complete parsed decay data for all nuclides.
+        Each dict represents one MF=8 MT=457 section (one isomeric state).
+        
+    compact_only : bool, default=False
+        If True:  Only print summary table
+        If False: Print summary + all detailed transition data
+    
+    Output:
+    -------
+    Prints to stdout (or redirected file stream).
+    No return value.
+    
+    Notes:
+    ------
+    - Automatically handles stable nuclides (NST=1) by showing "STABLE"
+    - Skips energy output for nuclides without spectra
+    - Includes comprehensive error handling for missing/malformed data
+    - All energies converted to human-readable units (keV or MeV)
+    """
     
     if not all_results:
         print("No data to display")
