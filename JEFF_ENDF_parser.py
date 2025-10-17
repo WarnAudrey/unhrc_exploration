@@ -1636,20 +1636,20 @@ def format_halflife(halflife_seconds):
         halflife_seconds: Half-life in seconds (from ENDF T1/2 field)
     
     Returns:
-        str: Formatted half-life in seconds (scientific notation for large values)
+        str: Formatted half-life in seconds (scientific notation)
         
     Examples:
         >>> format_halflife(614.4)
-        "6.144000e+02 seconds"
+        "6.144000e+02"
         >>> format_halflife(12.34)
-        "1.234000e+01 seconds"
+        "1.234000e+01"
         >>> format_halflife(0.0)
         "STABLE"
     """
     if halflife_seconds == 0.0:
         return "STABLE"
     else:
-        return f"{halflife_seconds:.6e} seconds"
+        return f"{halflife_seconds:.6e}"
 
 
 def verify_all_levels(all_results):
@@ -1703,7 +1703,7 @@ def verify_all_levels(all_results):
             else:
                 state_name = f"{element}-{A}m{lis if lis > 1 else ''}"
             
-            print(f"    Level {lis} (MAT={mat}): {state_name}, T½ = {halflife_str}")
+            print(f"    Level {lis} (MAT={mat}): {state_name}, T½ = {halflife_str} seconds")
     
     print("\n" + "="*140)
     print()
@@ -1739,7 +1739,7 @@ def print_all_energies(all_results):
         print()
         print("="*200)
         print(f"NUCLIDE: {nuclide_name} (MAT={mat}, LIS={lis}, ZA={za})")
-        print(f"Half-life: {halflife_str}")
+        print(f"Half-life: {halflife_str} seconds")
         print("="*200)
         
         if "spectra" not in result or not result["spectra"]:
@@ -2131,7 +2131,7 @@ def print_compact_summary_table(all_results):
     3. Element       - Chemical symbol (e.g., U, Pu, Am)
     4. Level         - Isomeric state (0=ground, 1=first excited, ...)
     5. Nuclide       - Full identifier (e.g., U-235, Am-241m)
-    6. Half-life     - Decay half-life (auto-scaled: s/min/hr/d/yr)
+    6. Half-life     - Decay half-life (seconds)
     7. Q-value       - Total decay energy (MeV)
     8. B+ Branch     - Beta+ branching ratio (%)
     9. EC Branch     - Electron capture branching ratio (%)
@@ -2142,7 +2142,7 @@ def print_compact_summary_table(all_results):
     
     Data Processing:
     ----------------
-    - Half-lives: Automatically formatted with appropriate units
+    - Half-lives: Displayed in seconds (scientific notation)
     - Energies: Converted from eV to MeV for readability
     - Branching ratios: Calculated from spectrum intensities
     - Missing data: Shown as dashes (---) when not available
@@ -2181,7 +2181,7 @@ def print_compact_summary_table(all_results):
     
     # Complete header with all columns
     print(f"{'Z':>3s}  {'A':>5s}  {'Element':>5s}  {'LIS':>3s}  {'Nuclide':>8s}  {'Spin':>6s}  {'Parity':>7s}  {'Parent Ex':>12s}  {'Half-life':>18s}  {'Decay':>8s}  {'Q-value':>12s}  {'Daughter':>10s}  {'RFS':>3s}  {'B+ Branch':>12s}  {'EC Branch':>12s}  {'Mean α':>12s}  {'Mean β':>12s}  {'Mean γ':>12s}  {'MAT':>5s}")
-    print(f"{'':>3s}  {'':>5s}  {'':>5s}  {'':>3s}  {'Name':>8s}  {'':>6s}  {'':>7s}  {'(keV)':>12s}  {'':>18s}  {'Type':>8s}  {'(keV)':>12s}  {'Nuclide':>10s}  {'':>3s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
+    print(f"{'':>3s}  {'':>5s}  {'':>5s}  {'':>3s}  {'Name':>8s}  {'':>6s}  {'':>7s}  {'(keV)':>12s}  {'(seconds)':>18s}  {'Type':>8s}  {'(keV)':>12s}  {'Nuclide':>10s}  {'':>3s}  {'(%)':>12s}  {'(%)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'(keV)':>12s}  {'':>5s}")
     print("-"*220)
     
     for za in sorted(nuclides.keys()):
@@ -2412,7 +2412,7 @@ def format_and_print_combined_table(all_results, compact_only=False):
     
     # Print comprehensive table header with FULL NAMES (not acronyms)
     header1 = f"{'Z':>3s}  {'A':>4s}  {'Element':>7s}  {'Level':>5s}  {'Iso':>3s}  {'Stable':>6s}  {'Nuclide':>10s}  {'Weight Ratio':>13s}  {'Spin':>8s}  {'Parity':>8s}  {'Excitation':>13s}  {'±Excit':>12s}  {'Half-life':>18s}  {'±Half-life':>13s}  {'Decay Type':>12s}  {'Q-value':>13s}  {'±Q-value':>12s}  {'Daughter':>12s}  {'D-Level':>7s}  {'Branch Ratio':>13s}  {'±Branch':>12s}  {'Beta+':>12s}  {'Elec Capt':>12s}  {'#Decay':>6s}  {'#Spectra':>8s}  {'#Excited':>8s}  {'Alpha Mean':>13s}  {'±Alpha':>12s}  {'Beta Mean':>13s}  {'±Beta':>12s}  {'Gamma Mean':>13s}  {'±Gamma':>12s}  {'MAT':>5s}"
-    header2 = f"{'':>3s}  {'':>4s}  {'':>7s}  {'':>5s}  {'Flag':>3s}  {'(0/1)':>6s}  {'Name':>10s}  {'(mass/n)':>13s}  {'':>8s}  {'':>8s}  {'(keV)':>13s}  {'(keV)':>12s}  {'':>18s}  {'(seconds)':>13s}  {'':>12s}  {'(keV)':>13s}  {'(keV)':>12s}  {'Nuclide':>12s}  {'':>7s}  {'(%)':>13s}  {'(%)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'Modes':>6s}  {'':>8s}  {'States':>8s}  {'(keV)':>13s}  {'(keV)':>12s}  {'(keV)':>13s}  {'(keV)':>12s}  {'(keV)':>13s}  {'(keV)':>12s}  {'':>5s}"
+    header2 = f"{'':>3s}  {'':>4s}  {'':>7s}  {'':>5s}  {'Flag':>3s}  {'(0/1)':>6s}  {'Name':>10s}  {'(mass/n)':>13s}  {'':>8s}  {'':>8s}  {'(keV)':>13s}  {'(keV)':>12s}  {'(seconds)':>18s}  {'(seconds)':>13s}  {'':>12s}  {'(keV)':>13s}  {'(keV)':>12s}  {'Nuclide':>12s}  {'':>7s}  {'(%)':>13s}  {'(%)':>12s}  {'(%)':>12s}  {'(%)':>12s}  {'Modes':>6s}  {'':>8s}  {'States':>8s}  {'(keV)':>13s}  {'(keV)':>12s}  {'(keV)':>13s}  {'(keV)':>12s}  {'(keV)':>13s}  {'(keV)':>12s}  {'':>5s}"
     print(header1)
     print(header2)
     print("-"*450)
@@ -3167,7 +3167,7 @@ if __name__ == "__main__":
             level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
             
             print()
-            print(f"MAT={mat}, Level {lis}: {level_name}, T½ = {halflife_s:.4e} seconds")
+            print(f"MAT={mat}, Level {lis}: {level_name}, T½ = {halflife_s:.6e} seconds")
             
             bplus_br_pct = extract_bplus_branching(result)
             if result.get("modes"):
