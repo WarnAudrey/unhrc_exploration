@@ -1627,43 +1627,29 @@ def extract_bplus_branching(parsed_data):
 
 def format_halflife(halflife_seconds):
     """
-    Convert half-life from seconds to human-readable units.
+    Format half-life in seconds.
     
-    ENDF stores all half-lives in seconds (SI units), but for readability
-    this function converts to appropriate units based on magnitude.
-    
-    Conversion Thresholds:
-    ----------------------
-    < 60 seconds     → seconds
-    < 3600 seconds   → minutes
-    < 86400 seconds  → hours
-    < 31536000 sec   → days
-    ≥ 31536000 sec   → years
+    ENDF stores all half-lives in seconds (SI units). This function
+    returns the half-life in seconds with appropriate formatting.
     
     Args:
         halflife_seconds: Half-life in seconds (from ENDF T1/2 field)
     
     Returns:
-        str: Formatted half-life with units
+        str: Formatted half-life in seconds (scientific notation for large values)
         
     Examples:
-        >>> format_halflife(10.24 * 60)
-        "10.24 minutes"
-        >>> format_halflife(12.34 * 365.25 * 86400)
-        "12.34 years"
+        >>> format_halflife(614.4)
+        "6.144000e+02 seconds"
+        >>> format_halflife(12.34)
+        "1.234000e+01 seconds"
         >>> format_halflife(0.0)
         "STABLE"
     """
-    if halflife_seconds < 60:
-        return f"{halflife_seconds:.2f} seconds"
-    elif halflife_seconds < 3600:
-        return f"{halflife_seconds/60:.2f} minutes"
-    elif halflife_seconds < 86400:
-        return f"{halflife_seconds/3600:.2f} hours"
-    elif halflife_seconds < 31536000:
-        return f"{halflife_seconds/86400:.2f} days"
+    if halflife_seconds == 0.0:
+        return "STABLE"
     else:
-        return f"{halflife_seconds/31536000:.2f} years"
+        return f"{halflife_seconds:.6e} seconds"
 
 
 def verify_all_levels(all_results):
@@ -2663,7 +2649,7 @@ def format_and_print_table(parsed_data):
     print("="*130)
     print()
     print(f"Nuclide: {element}-{a} (Z={z}, A={a})")
-    print(f"Half-life: {halflife_s:.4e} seconds ({halflife_s/60.0:.2f} minutes)")
+    print(f"Half-life: {halflife_s:.4e} seconds")
     print(f"Q-value: {q_kev:.4f} keV")
     print()
     
@@ -2695,7 +2681,7 @@ def format_and_print_table(parsed_data):
     print("-"*130)
     print()
     print("Summary:")
-    print(f"  • {element}-{a} undergoes EC/β+ decay with T½ = {halflife_s/60.0:.2f} minutes")
+    print(f"  • {element}-{a} undergoes EC/β+ decay with T½ = {halflife_s:.4e} seconds")
     print(f"  • β+ emission accounts for {bplus_br_pct:.2f}% of decays")
     print(f"  • Electron capture accounts for {ec_br_pct:.2f}% of decays")
     print("="*130)
@@ -3181,7 +3167,7 @@ if __name__ == "__main__":
             level_name = f"{element}-{a}" if lis == 0 else f"{element}-{a}m{lis}" if lis > 0 else f"{element}-{a}"
             
             print()
-            print(f"MAT={mat}, Level {lis}: {level_name}, T½ = {halflife_s/60.0:.2f} min")
+            print(f"MAT={mat}, Level {lis}: {level_name}, T½ = {halflife_s:.4e} seconds")
             
             bplus_br_pct = extract_bplus_branching(result)
             if result.get("modes"):
