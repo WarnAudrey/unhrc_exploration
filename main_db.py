@@ -164,7 +164,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Process JSON data with EC/β+ splitting
+  # Process all JSON data from parent directory (EASIEST)
+  python main_db.py process_json \\
+    --json-dir /Users/audreywarn/fluka-db-audrey/data_input/ensdf/json_070125 \\
+    --output ./output_data/
+  
+  # Or specify individual directories
   python main_db.py process_json \\
     --adopted /path/to/adopted/ \\
     --beta /path/to/beta-decay/ \\
@@ -173,7 +178,7 @@ Examples:
     --output ./output_data/
   
   # Use specific configuration
-  python main_db.py process_json --adopted /path/to/adopted/ --config dmf5
+  python main_db.py process_json --json-dir /path/to/json/ --config dmf5
         """
     )
     
@@ -181,10 +186,16 @@ Examples:
     
     # JSON processing command
     json_parser = subparsers.add_parser('process_json', help='Process JSON nuclear data files')
-    json_parser.add_argument('--adopted', required=True, help='Path to adopted levels JSON directory')
+    
+    # Option 1: Single parent directory (auto-discovers subdirectories)
+    json_parser.add_argument('--json-dir', help='Path to parent JSON directory (auto-discovers subdirectories)')
+    
+    # Option 2: Individual directories
+    json_parser.add_argument('--adopted', help='Path to adopted levels JSON directory')
     json_parser.add_argument('--beta', help='Path to beta-decay JSON directory')
     json_parser.add_argument('--alpha', help='Path to alpha-decay JSON directory')
     json_parser.add_argument('--delayed', help='Path to delayed-particle-decay JSON directory')
+    
     json_parser.add_argument('--output', default='./nuclear_data_output', help='Output directory for ASCII files')
     json_parser.add_argument('--config', choices=['dmf5', 'dm'], default='dmf5', 
                            help='Configuration type (dmf5=JSON, dm=legacy)')
@@ -192,14 +203,52 @@ Examples:
     args = parser.parse_args()
     
     if args.command == 'process_json':
-        # Collect all JSON directories
-        json_dirs = [args.adopted]
-        if args.beta:
-            json_dirs.append(args.beta)
-        if args.alpha:
-            json_dirs.append(args.alpha)
-        if args.delayed:
-            json_dirs.append(args.delayed)
+        json_dirs = []
+        
+        # Option 1: Auto-discover from parent directory
+        if args.json_dir:
+            parent_dir = Path(args.json_dir)
+            if not parent_dir.exists():
+                print(f"ERROR: Directory not found: {args.json_dir}")
+                sys.exit(1)
+            
+            print(f"Auto-discovering JSON subdirectories in: {args.json_dir}")
+            
+            # Look for standard ENSDF subdirectories
+            subdirs = {
+                'adopted': ['adopted', 'adopted-levels'],
+                'beta': ['beta-decay', 'beta_decay'],
+                'alpha': ['alpha-decay', 'alpha_decay'],
+                'delayed': ['delayed-particle-decay', 'delayed_particle_decay', 'delayed-particle']
+            }
+            
+            for data_type, possible_names in subdirs.items():
+                for name in possible_names:
+                    subdir = parent_dir / name
+                    if subdir.exists() and subdir.is_dir():
+                        json_dirs.append(str(subdir))
+                        print(f"  Found {data_type}: {subdir}")
+                        break
+            
+            if not json_dirs:
+                print(f"ERROR: No recognized subdirectories found in {args.json_dir}")
+                print("Expected subdirectories: adopted/, beta-decay/, alpha-decay/, delayed-particle-decay/")
+                sys.exit(1)
+        
+        # Option 2: Use individually specified directories
+        else:
+            if not args.adopted:
+                print("ERROR: Must specify either --json-dir or --adopted")
+                json_parser.print_help()
+                sys.exit(1)
+            
+            json_dirs = [args.adopted]
+            if args.beta:
+                json_dirs.append(args.beta)
+            if args.alpha:
+                json_dirs.append(args.alpha)
+            if args.delayed:
+                json_dirs.append(args.delayed)
         
         # Run processing
         success = process_json(json_dirs, args.output, args.config)
