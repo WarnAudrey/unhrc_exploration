@@ -56,14 +56,49 @@ class ENDFDataModule:
             if Z is None or A is None:
                 continue
             
-            # Add nuclide entry
+            # Get element name
+            element_name = ATOMIC_SYMBOL.get(Z, f'Z{Z}')
+            element_symbol = element_name
+            
+            # Get ALL ENDF nuclide properties (matching dmf_endf NUCLIDE fields)
+            lis = result.get('LIS', 0)
+            liso = result.get('LISO', 0)
+            nst = result.get('NST', 0)
+            awr = result.get('AWR', 0.0)
+            spi = result.get('SPI', 0.0)
+            par = result.get('PAR', 0.0)
+            
+            # Half-life (tuple: value, uncertainty)
+            t_half = result.get('T1/2', (0.0, 0.0))
+            halflife = t_half[0] if isinstance(t_half, tuple) else t_half
+            halflife_unc = t_half[1] if isinstance(t_half, tuple) else 0.0
+            
+            # Decay mode and spectra counts
+            ndk = result.get('NDK', 0)
+            nsp = result.get('NSP', 0)
+            nc = result.get('NC', 0)
+            
+            # Add nuclide entry with ALL dmf_endf NUCLIDE fields
             nuclide_rows.append({
                 'A': A,
                 'Z': Z,
-                'MAT': MAT
+                'elementName': element_name,
+                'elementSymbol': element_symbol,
+                'MAT': MAT,
+                'LIS': lis,
+                'LISO': liso,
+                'NST': nst,
+                'AWR': awr,
+                'Spin': spi,
+                'Parity': par,
+                'HalfLife': halflife,
+                'HalfLife_uncertainty': halflife_unc,
+                'NDK': ndk,
+                'NSP': nsp,
+                'NC': nc
             })
             
-            # Process decay modes (result["modes"] from ENDF parser)
+            # Process decay modes with ALL dmf_endf DECAY fields
             modes = result.get('modes', [])
             for mode in modes:
                 # ENDF parser returns RTYP as float (1.0, 2.0, 1.5, 2.4, etc.)
@@ -72,17 +107,17 @@ class ENDFDataModule:
                 # Branching ratio (BR is a tuple: (value, uncertainty))
                 br_tuple = mode.get('BR', (0.0, 0.0))
                 branching = br_tuple[0] if isinstance(br_tuple, tuple) else br_tuple
+                branching_unc = br_tuple[1] if isinstance(br_tuple, tuple) else 0.0
                 
-                # Q-value (also a tuple)
+                # Q-value (also a tuple: value, uncertainty) - convert eV to keV
                 q_tuple = mode.get('Q', (0.0, 0.0))
-                q_value = q_tuple[0] / 1000.0 if isinstance(q_tuple, tuple) else q_tuple / 1000.0  # Convert eV to keV
+                q_value = (q_tuple[0] if isinstance(q_tuple, tuple) else q_tuple) / 1000.0
+                q_unc = (q_tuple[1] if isinstance(q_tuple, tuple) else 0.0) / 1000.0
                 
-                # Daughter state
+                # Daughter state (RFS)
                 rfs = mode.get('RFS', 0)
                 
                 # Map RTYP to decay mode label
-                # The ENDF parser already handles EC/β+ splitting, so we'll see
-                # separate entries with RTYP=2.0 for both components
                 decay_mode_label = self._decode_endf_rtyp(rtyp)
                 
                 # Get energy information from spectra
@@ -92,7 +127,7 @@ class ENDFDataModule:
                 if "spectra" in result:
                     primary_decay = int(rtyp)
                     
-                    # For beta decays, look for beta spectrum (STYP=2 for β+, could be other for β-)
+                    # For beta decays, look for beta spectrum
                     for spec in result.get("spectra", []):
                         styp = spec.get("STYP", -1)
                         
@@ -103,30 +138,37 @@ class ENDFDataModule:
                             if isinstance(er_av, tuple) and er_av[0] > 0:
                                 avg_energy = er_av[0] / 1000.0  # eV to keV
                             
-                            # Try to get endpoint from discrete transitions
+                            # Endpoint from discrete transitions
                             if "discrete" in spec and spec["discrete"]:
-                                # Use first discrete transition's endpoint energy
                                 first_disc = spec["discrete"][0]
                                 er_tuple = first_disc.get("ER", (0.0, 0.0))
                                 if isinstance(er_tuple, tuple):
-                                    endpoint_energy = er_tuple[0] / 1000.0  # eV to keV
+                                    endpoint_energy = er_tuple[0] / 1000.0
                         
-                        # Beta- or other spectra - use ER_AV if available
+                        # Beta- or other spectra
                         elif styp in [0, 2, 4] and avg_energy == 0.0:
                             er_av = spec.get("ER_AV", (0.0, 0.0))
                             if isinstance(er_av, tuple) and er_av[0] > 0:
                                 avg_energy = er_av[0] / 1000.0
                 
                 if decay_mode_label:
+                    # Add decay row with ALL dmf_endf DECAY fields
                     decay_rows.append({
                         'A': A,
                         'Z': Z,
-                        'parentLevel': 0,  # ENDF MF=8 MT=457 is ground state
+                        'parentLevel': lis,  # Use LIS for parent level
                         'decay_mode': decay_mode_label,
-                        'final_level': int(rfs),  # Daughter state from RFS
-                        'Intensity': f"{branching * 100:.6g}",  # Convert to percentage
-                        'Average energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
-                        'Endpoint energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
+                        'final_level': int(rfs),
+                        'RTYP': rtyp,
+                        'RFS': rfs,
+                        'Q_value': q_value,
+                        'Q_uncertainty': q_unc,
+                        'Branching_ratio': branching,
+                        'Branching_uncertainty': branching_unc,
+                        'Intensity': f"{branching * 100:.6g}",
+                        'Average_energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
+                        'Endpoint_energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
+                        'MAT': MAT
                     })
         
         # Create decay DataFrame
