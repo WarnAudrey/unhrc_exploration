@@ -199,8 +199,8 @@ class ENDFDataModule:
                         'Branching_ratio': bplus_br,
                         'Branching_uncertainty': branching_unc,  # Same uncertainty for both
                         'Intensity': f"{bplus_br * 100:.6g}",
-                        'Average_energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
-                        'Endpoint_energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
+                        'Average energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
+                        'Endpoint energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
                         'MAT': MAT
                     })
                     
@@ -219,8 +219,8 @@ class ENDFDataModule:
                         'Branching_ratio': ec_br,
                         'Branching_uncertainty': branching_unc,
                         'Intensity': f"{ec_br * 100:.6g}",
-                        'Average_energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",  # Same energy for both
-                        'Endpoint_energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
+                        'Average energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",  # Same energy for both
+                        'Endpoint energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
                         'MAT': MAT
                     })
                 else:
@@ -241,8 +241,8 @@ class ENDFDataModule:
                             'Branching_ratio': total_branching,
                             'Branching_uncertainty': branching_unc,
                             'Intensity': f"{total_branching * 100:.6g}",
-                            'Average_energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
-                            'Endpoint_energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
+                            'Average energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
+                            'Endpoint energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
                             'MAT': MAT
                         })
         
