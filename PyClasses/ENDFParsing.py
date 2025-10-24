@@ -36,14 +36,25 @@ class ENDFDataModule:
     
     def _parse_to_dataframes(self):
         """
-        Convert ENDF results into DataFrames matching the NuclearDataModule format.
+        Convert ENDF results into DataFrames matching the dmf_endf configuration.
         
         ENDF data structure from JEFF_ENDF_parser:
-        - Each result has modes[] with RTYP, BR, Q
-        - EC/β+ splitting already done in the parser
-        - spectra[] contains energy information
+        - Each result has modes[] with RTYP, BR, Q, RFS
+        - EC/β+ splitting needs to be done HERE (parser only splits during output)
+        - spectra[] contains energy information with STYP, ER_AV, discrete[]
         """
         print("Converting ENDF data to DataFrames...")
+        
+        # Import from the actual parser
+        import sys
+        from pathlib import Path as PathlibPath
+        
+        # Add workspace root to path if needed to find JEFF_ENDF_parser
+        workspace_root = PathlibPath(__file__).parent.parent
+        if str(workspace_root) not in sys.path:
+            sys.path.insert(0, str(workspace_root))
+        
+        from JEFF_ENDF_parser import ATOMIC_SYMBOL, extract_bplus_branching, decode_rtyp
         
         decay_rows = []
         nuclide_rows = []
@@ -106,7 +117,7 @@ class ENDFDataModule:
                 
                 # Branching ratio (BR is a tuple: (value, uncertainty))
                 br_tuple = mode.get('BR', (0.0, 0.0))
-                branching = br_tuple[0] if isinstance(br_tuple, tuple) else br_tuple
+                total_branching = br_tuple[0] if isinstance(br_tuple, tuple) else br_tuple
                 branching_unc = br_tuple[1] if isinstance(br_tuple, tuple) else 0.0
                 
                 # Q-value (also a tuple: value, uncertainty) - convert eV to keV
@@ -116,9 +127,6 @@ class ENDFDataModule:
                 
                 # Daughter state (RFS)
                 rfs = mode.get('RFS', 0)
-                
-                # Map RTYP to decay mode label
-                decay_mode_label = self._decode_endf_rtyp(rtyp)
                 
                 # Get energy information from spectra
                 avg_energy = 0.0
@@ -151,25 +159,92 @@ class ENDFDataModule:
                             if isinstance(er_av, tuple) and er_av[0] > 0:
                                 avg_energy = er_av[0] / 1000.0
                 
-                if decay_mode_label:
-                    # Add decay row with ALL dmf_endf DECAY fields
+                # ========================================
+                # EC/β+ SPLITTING FOR ALL 2.x RTYP VALUES
+                # ========================================
+                # ENDF stores total EC/β+ branching in BR field
+                # We need to split into separate β+ and EC components
+                primary_mode = int(rtyp)
+                
+                if primary_mode == 2:  # Any EC/β+ decay (2.0, 2.4, 2.7, etc.)
+                    # Extract β+ component from discrete transitions
+                    bplus_br_pct = extract_bplus_branching(result)
+                    bplus_br = bplus_br_pct / 100.0  # Convert to fraction
+                    
+                    # Calculate EC component
+                    total_br = total_branching * 100.0 if total_branching <= 1.0 else total_branching
+                    ec_br = (total_br - bplus_br_pct) / 100.0  # Convert to fraction
+                    
+                    # Decode secondary particle if present (e.g., α for 2.4)
+                    secondary = int(round((rtyp - primary_mode) * 10))
+                    particle_map = {
+                        0: "",       # No secondary particle
+                        1: ",β-",    2: ",β+",    3: ",IT",
+                        4: ",α",     5: ",n",     6: ",SF",    7: ",p"
+                    }
+                    suffix = particle_map.get(secondary, f",{secondary}" if secondary > 0 else "")
+                    
+                    # Create β+ decay row
+                    bplus_label = f"B+{suffix}"  # Map to standard notation
                     decay_rows.append({
                         'A': A,
                         'Z': Z,
-                        'parentLevel': lis,  # Use LIS for parent level
-                        'decay_mode': decay_mode_label,
+                        'parentLevel': lis,
+                        'decay_mode': bplus_label,
                         'final_level': int(rfs),
                         'RTYP': rtyp,
                         'RFS': rfs,
                         'Q_value': q_value,
                         'Q_uncertainty': q_unc,
-                        'Branching_ratio': branching,
-                        'Branching_uncertainty': branching_unc,
-                        'Intensity': f"{branching * 100:.6g}",
+                        'Branching_ratio': bplus_br,
+                        'Branching_uncertainty': branching_unc,  # Same uncertainty for both
+                        'Intensity': f"{bplus_br * 100:.6g}",
                         'Average_energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
                         'Endpoint_energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
                         'MAT': MAT
                     })
+                    
+                    # Create EC decay row
+                    ec_label = f"EC{suffix}"  # Map to standard notation
+                    decay_rows.append({
+                        'A': A,
+                        'Z': Z,
+                        'parentLevel': lis,
+                        'decay_mode': ec_label,
+                        'final_level': int(rfs),
+                        'RTYP': rtyp,
+                        'RFS': rfs,
+                        'Q_value': q_value,
+                        'Q_uncertainty': q_unc,
+                        'Branching_ratio': ec_br,
+                        'Branching_uncertainty': branching_unc,
+                        'Intensity': f"{ec_br * 100:.6g}",
+                        'Average_energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",  # Same energy for both
+                        'Endpoint_energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
+                        'MAT': MAT
+                    })
+                else:
+                    # Single row for non-EC/β+ decays
+                    decay_mode_label = self._decode_endf_rtyp(rtyp)
+                    
+                    if decay_mode_label:
+                        decay_rows.append({
+                            'A': A,
+                            'Z': Z,
+                            'parentLevel': lis,
+                            'decay_mode': decay_mode_label,
+                            'final_level': int(rfs),
+                            'RTYP': rtyp,
+                            'RFS': rfs,
+                            'Q_value': q_value,
+                            'Q_uncertainty': q_unc,
+                            'Branching_ratio': total_branching,
+                            'Branching_uncertainty': branching_unc,
+                            'Intensity': f"{total_branching * 100:.6g}",
+                            'Average_energy': f"{avg_energy:.6g} keV" if avg_energy > 0 else "",
+                            'Endpoint_energy': f"{endpoint_energy:.6g} keV" if endpoint_energy > 0 else "",
+                            'MAT': MAT
+                        })
         
         # Create decay DataFrame
         if decay_rows:
