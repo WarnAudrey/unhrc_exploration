@@ -1,8 +1,22 @@
 # Analysis of UNHCR data
-
+# This file loads and prepares data for the Shiny app
 
 # Set up ------------------------------------------------------------------
+library(tidyverse)
+library(plotly)
+library(countrycode)
 
+# Load data and shapefile
+all_data <- read.csv("data/population.csv", skip = 14) %>% 
+    filter(Year == max(Year, na.rm = T)) %>% 
+    select(contains("Country"), Asylum.seekers)
+shapefile <- map_data("world")
+
+# List of iso3 codes
+country_df <- all_data %>% 
+    distinct(Country.of.asylum..ISO., Country.of.asylum)
+
+choices <- setNames(country_df$Country.of.asylum..ISO., country_df$Country.of.asylum)
 # Simple exploration
 dim(all_data)
 unique(all_data$Year)
