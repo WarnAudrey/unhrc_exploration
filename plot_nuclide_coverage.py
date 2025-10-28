@@ -14,8 +14,11 @@ Only nuclides with Z <= 100 are shown (higher Z values are physically unrealisti
 for most decay applications).
 """
 
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for headless environments
 import matplotlib.pyplot as plt
 from pathlib import Path
+import argparse
 
 
 def read_nuclides_from_decay_ascii(filepath):
@@ -193,8 +196,8 @@ def plot_nuclide_comparison(endf_nuclides, json_nuclides, output_file="nuclide_c
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"\nPlot saved to: {output_file}")
     
-    # Show plot (optional - comment out if running in batch mode)
-    plt.show()
+    # Show plot (disabled for headless/batch mode)
+    # plt.show()
 
 
 def main():
@@ -202,17 +205,53 @@ def main():
     Main function to orchestrate the nuclide coverage comparison.
     """
     # ========================================================================
+    # PARSE COMMAND-LINE ARGUMENTS
+    # ========================================================================
+    parser = argparse.ArgumentParser(
+        description="Compare nuclide coverage between ENDF and JSON DECAY data"
+    )
+    parser.add_argument(
+        '--endf',
+        type=str,
+        default="/Users/audreywarn/fluka-db-audrey/outputs/endf/endf_data_modules/ascii/DECAY.ascii",
+        help="Path to ENDF DECAY.ascii file"
+    )
+    parser.add_argument(
+        '--json',
+        type=str,
+        default="/Users/audreywarn/fluka-db-audrey/src/nuclear_data_output/json_data_modules/ascii/DECAY.ascii",
+        help="Path to JSON DECAY.ascii file"
+    )
+    parser.add_argument(
+        '--output',
+        type=str,
+        default="nuclide_coverage_comparison.png",
+        help="Output plot filename (default: nuclide_coverage_comparison.png)"
+    )
+    parser.add_argument(
+        '--zmax',
+        type=int,
+        default=100,
+        help="Maximum Z value to plot (default: 100)"
+    )
+    
+    args = parser.parse_args()
+    
+    # ========================================================================
     # FILE PATHS
     # ========================================================================
-    # Update these paths to match your directory structure
-    endf_file = "/Users/audreywarn/fluka-db-audrey/outputs/endf/endf_data_modules/ascii/DECAY.ascii"
-    json_file = "/Users/audreywarn/fluka-db-audrey/src/nuclear_data_output/json_data_modules/ascii/DECAY.ascii"
+    endf_file = args.endf
+    json_file = args.json
+    output_file = args.output
+    z_max = args.zmax
     
     print("=" * 60)
     print("NUCLIDE COVERAGE COMPARISON")
     print("=" * 60)
     print(f"ENDF file: {endf_file}")
     print(f"JSON file: {json_file}")
+    print(f"Output:    {output_file}")
+    print(f"Z cutoff:  {z_max}")
     print("=" * 60)
     
     # ========================================================================
@@ -232,16 +271,16 @@ def main():
     # ========================================================================
     # APPLY Z CUTOFF
     # ========================================================================
-    print("\nApplying Z <= 100 filter...")
-    endf_nuclides = filter_by_z_cutoff(endf_nuclides, z_max=100)
-    json_nuclides = filter_by_z_cutoff(json_nuclides, z_max=100)
+    print(f"\nApplying Z <= {z_max} filter...")
+    endf_nuclides = filter_by_z_cutoff(endf_nuclides, z_max=z_max)
+    json_nuclides = filter_by_z_cutoff(json_nuclides, z_max=z_max)
     
     # ========================================================================
     # CREATE PLOT
     # ========================================================================
     print("\nGenerating plot...")
     plot_nuclide_comparison(endf_nuclides, json_nuclides, 
-                           output_file="nuclide_coverage_comparison.png")
+                           output_file=output_file)
     
     print("\nDone!")
 
