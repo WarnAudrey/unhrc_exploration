@@ -151,25 +151,25 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     # Plot in reverse order so most interesting data (differences) is on top
     
     if common:
-        plt.scatter(common_Z, common_A, 
+        plt.scatter(common_A, common_Z, 
                    c='blue', marker='o', s=20, alpha=0.4, 
                    label=f'Both ENDF & ENSDF ({len(common)})')
     
     if ensdf_only:
-        plt.scatter(ensdf_Z, ensdf_A, 
+        plt.scatter(ensdf_A, ensdf_Z, 
                    c='green', marker='s', s=30, alpha=0.7, 
                    label=f'ENSDF only ({len(ensdf_only)})')
     
     if endf_only:
-        plt.scatter(endf_Z, endf_A, 
+        plt.scatter(endf_A, endf_Z, 
                    c='red', marker='^', s=30, alpha=0.7, 
                    label=f'ENDF only ({len(endf_only)})')
     
     # ========================================================================
     # FORMAT PLOT
     # ========================================================================
-    plt.xlabel('Atomic Number (Z)', fontsize=12, fontweight='bold')
-    plt.ylabel('Mass Number (A)', fontsize=12, fontweight='bold')
+    plt.xlabel('Mass Number (A)', fontsize=12, fontweight='bold')
+    plt.ylabel('Atomic Number (Z)', fontsize=12, fontweight='bold')
     plt.title('Nuclide Coverage Comparison: ENDF vs ENSDF Decay Data', 
               fontsize=14, fontweight='bold', pad=20)
     
@@ -184,8 +184,8 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
         all_Z = [Z for A, Z in (endf_nuclides | ensdf_nuclides)]
         all_A = [A for A, Z in (endf_nuclides | ensdf_nuclides)]
         
-        plt.xlim(min(all_Z) - 2, max(all_Z) + 2)
-        plt.ylim(min(all_A) - 5, max(all_A) + 5)
+        plt.xlim(min(all_A) - 5, max(all_A) + 5)
+        plt.ylim(min(all_Z) - 2, max(all_Z) + 2)
     
     # Tight layout to prevent label cutoff
     plt.tight_layout()
