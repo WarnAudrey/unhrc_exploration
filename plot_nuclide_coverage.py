@@ -3,12 +3,12 @@
 Nuclide Coverage Comparison Plot
 
 This script creates a scatter plot comparing which nuclides (A, Z pairs) are present
-in ENDF vs JSON DECAY data files.
+in ENDF vs ENSDF DECAY data files.
 
 Plot shows:
-- Blue: Nuclides in both ENDF and JSON
+- Blue: Nuclides in both ENDF and ENSDF
 - Red: Nuclides only in ENDF
-- Green: Nuclides only in JSON
+- Green: Nuclides only in ENSDF
 
 Only nuclides with Z <= 100 are shown (higher Z values are physically unrealistic
 for most decay applications).
@@ -98,31 +98,31 @@ def filter_by_z_cutoff(nuclides, z_max=100):
     return filtered
 
 
-def plot_nuclide_comparison(endf_nuclides, json_nuclides, output_file="nuclide_coverage.png"):
+def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_coverage.png"):
     """
-    Create a scatter plot comparing ENDF and JSON nuclide coverage.
+    Create a scatter plot comparing ENDF and ENSDF nuclide coverage.
     
     Args:
         endf_nuclides: Set of (A, Z) tuples from ENDF data
-        json_nuclides: Set of (A, Z) tuples from JSON data
+        ensdf_nuclides: Set of (A, Z) tuples from ENSDF data
         output_file: Path to save the plot image
     """
     # ========================================================================
     # CATEGORIZE NUCLIDES
     # ========================================================================
     # Use set operations to find differences and intersections
-    common = endf_nuclides & json_nuclides      # In both datasets
-    endf_only = endf_nuclides - json_nuclides   # Only in ENDF
-    json_only = json_nuclides - endf_nuclides   # Only in JSON
+    common = endf_nuclides & ensdf_nuclides      # In both datasets
+    endf_only = endf_nuclides - ensdf_nuclides   # Only in ENDF
+    ensdf_only = ensdf_nuclides - endf_nuclides  # Only in ENSDF
     
     print("\n" + "=" * 60)
     print("NUCLIDE COVERAGE SUMMARY")
     print("=" * 60)
     print(f"Common to both:     {len(common):4d} nuclides")
     print(f"ENDF only:          {len(endf_only):4d} nuclides")
-    print(f"JSON only:          {len(json_only):4d} nuclides")
+    print(f"ENSDF only:         {len(ensdf_only):4d} nuclides")
     print(f"Total ENDF:         {len(endf_nuclides):4d} nuclides")
-    print(f"Total JSON:         {len(json_nuclides):4d} nuclides")
+    print(f"Total ENSDF:        {len(ensdf_nuclides):4d} nuclides")
     print("=" * 60)
     
     # ========================================================================
@@ -138,9 +138,9 @@ def plot_nuclide_comparison(endf_nuclides, json_nuclides, output_file="nuclide_c
     endf_A = [A for A, Z in endf_only]
     endf_Z = [Z for A, Z in endf_only]
     
-    # JSON-only nuclides (green)
-    json_A = [A for A, Z in json_only]
-    json_Z = [Z for A, Z in json_only]
+    # ENSDF-only nuclides (green)
+    ensdf_A = [A for A, Z in ensdf_only]
+    ensdf_Z = [Z for A, Z in ensdf_only]
     
     # ========================================================================
     # CREATE PLOT
@@ -153,12 +153,12 @@ def plot_nuclide_comparison(endf_nuclides, json_nuclides, output_file="nuclide_c
     if common:
         plt.scatter(common_Z, common_A, 
                    c='blue', marker='o', s=20, alpha=0.4, 
-                   label=f'Both ENDF & JSON ({len(common)})')
+                   label=f'Both ENDF & ENSDF ({len(common)})')
     
-    if json_only:
-        plt.scatter(json_Z, json_A, 
+    if ensdf_only:
+        plt.scatter(ensdf_Z, ensdf_A, 
                    c='green', marker='s', s=30, alpha=0.7, 
-                   label=f'JSON only ({len(json_only)})')
+                   label=f'ENSDF only ({len(ensdf_only)})')
     
     if endf_only:
         plt.scatter(endf_Z, endf_A, 
@@ -170,7 +170,7 @@ def plot_nuclide_comparison(endf_nuclides, json_nuclides, output_file="nuclide_c
     # ========================================================================
     plt.xlabel('Atomic Number (Z)', fontsize=12, fontweight='bold')
     plt.ylabel('Mass Number (A)', fontsize=12, fontweight='bold')
-    plt.title('Nuclide Coverage Comparison: ENDF vs JSON Decay Data', 
+    plt.title('Nuclide Coverage Comparison: ENDF vs ENSDF Decay Data', 
               fontsize=14, fontweight='bold', pad=20)
     
     # Add grid for easier reading
@@ -180,9 +180,9 @@ def plot_nuclide_comparison(endf_nuclides, json_nuclides, output_file="nuclide_c
     plt.legend(loc='upper left', fontsize=10, framealpha=0.9)
     
     # Set axis limits with some padding
-    if endf_nuclides or json_nuclides:
-        all_Z = [Z for A, Z in (endf_nuclides | json_nuclides)]
-        all_A = [A for A, Z in (endf_nuclides | json_nuclides)]
+    if endf_nuclides or ensdf_nuclides:
+        all_Z = [Z for A, Z in (endf_nuclides | ensdf_nuclides)]
+        all_A = [A for A, Z in (endf_nuclides | ensdf_nuclides)]
         
         plt.xlim(min(all_Z) - 2, max(all_Z) + 2)
         plt.ylim(min(all_A) - 5, max(all_A) + 5)
@@ -208,7 +208,7 @@ def main():
     # PARSE COMMAND-LINE ARGUMENTS
     # ========================================================================
     parser = argparse.ArgumentParser(
-        description="Compare nuclide coverage between ENDF and JSON DECAY data"
+        description="Compare nuclide coverage between ENDF and ENSDF DECAY data"
     )
     parser.add_argument(
         '--endf',
@@ -217,10 +217,10 @@ def main():
         help="Path to ENDF DECAY.ascii file"
     )
     parser.add_argument(
-        '--json',
+        '--ensdf',
         type=str,
         default="/Users/audreywarn/fluka-db-audrey/src/nuclear_data_output/json_data_modules/ascii/DECAY.ascii",
-        help="Path to JSON DECAY.ascii file"
+        help="Path to ENSDF DECAY.ascii file"
     )
     parser.add_argument(
         '--output',
@@ -241,17 +241,17 @@ def main():
     # FILE PATHS
     # ========================================================================
     endf_file = args.endf
-    json_file = args.json
+    ensdf_file = args.ensdf
     output_file = args.output
     z_max = args.zmax
     
     print("=" * 60)
     print("NUCLIDE COVERAGE COMPARISON")
     print("=" * 60)
-    print(f"ENDF file: {endf_file}")
-    print(f"JSON file: {json_file}")
-    print(f"Output:    {output_file}")
-    print(f"Z cutoff:  {z_max}")
+    print(f"ENDF file:  {endf_file}")
+    print(f"ENSDF file: {ensdf_file}")
+    print(f"Output:     {output_file}")
+    print(f"Z cutoff:   {z_max}")
     print("=" * 60)
     
     # ========================================================================
@@ -260,11 +260,11 @@ def main():
     print("\nReading ENDF decay data...")
     endf_nuclides = read_nuclides_from_decay_ascii(endf_file)
     
-    print("\nReading JSON decay data...")
-    json_nuclides = read_nuclides_from_decay_ascii(json_file)
+    print("\nReading ENSDF decay data...")
+    ensdf_nuclides = read_nuclides_from_decay_ascii(ensdf_file)
     
     # Check if data was loaded
-    if not endf_nuclides and not json_nuclides:
+    if not endf_nuclides and not ensdf_nuclides:
         print("\nError: No data loaded from either file. Exiting.")
         return
     
@@ -273,13 +273,13 @@ def main():
     # ========================================================================
     print(f"\nApplying Z <= {z_max} filter...")
     endf_nuclides = filter_by_z_cutoff(endf_nuclides, z_max=z_max)
-    json_nuclides = filter_by_z_cutoff(json_nuclides, z_max=z_max)
+    ensdf_nuclides = filter_by_z_cutoff(ensdf_nuclides, z_max=z_max)
     
     # ========================================================================
     # CREATE PLOT
     # ========================================================================
     print("\nGenerating plot...")
-    plot_nuclide_comparison(endf_nuclides, json_nuclides, 
+    plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, 
                            output_file=output_file)
     
     print("\nDone!")
