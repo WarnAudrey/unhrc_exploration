@@ -217,7 +217,7 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     
     # Check stable region
     stable_region = {(N, Z) for N, Z in common if Z <= 20 and abs(N - Z) <= 10}
-    print(f"\nStable region (Z≤20, |N-Z|≤10): {len(stable_region)} common nuclides")
+    print(f"\nLight radioactive region (Z≤20, |N-Z|≤10): {len(stable_region)} common nuclides")
     
     if stable_region:
         examples = sorted(stable_region)[:10]
@@ -372,3 +372,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
