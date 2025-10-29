@@ -28,18 +28,20 @@ import numpy as np
 
 def read_nuclides_from_decay_ascii(filepath):
     """
-    Read unique (A, Z) pairs from a DECAY.ascii file.
+    Read unique (N, Z) pairs from a DECAY.ascii file.
     
     The DECAY.ascii format has:
     - Line 1: Column headers (multi-level)
     - Line 2: Sub-headers
     - Line 3+: Data rows with format: A Z parentLevel decay_mode final_level ...
     
+    We convert A, Z to N, Z for comparison where N = A - Z (neutron number).
+    
     Args:
         filepath: Path to DECAY.ascii file
         
     Returns:
-        set: Set of (A, Z) tuples representing unique nuclides
+        set: Set of (N, Z) tuples representing unique nuclides
     """
     nuclides = set()
     
@@ -63,16 +65,17 @@ def read_nuclides_from_decay_ascii(filepath):
                 if len(parts) >= 2:
                     A = int(parts[0])  # Mass number
                     Z = int(parts[1])  # Atomic number
+                    N = A - Z           # Neutron number
                     
-                    # Add to set (automatically handles duplicates)
-                    nuclides.add((A, Z))
+                    # Add (N, Z) tuple to set (automatically handles duplicates)
+                    nuclides.add((N, Z))
                     
             except (ValueError, IndexError) as e:
                 # Skip malformed lines
                 print(f"Warning: Skipping malformed line {line_num}: {str(e)}")
                 continue
         
-        print(f"Read {len(nuclides)} unique nuclides from {filepath}")
+        print(f"Read {len(nuclides)} unique (N, Z) pairs from {filepath}")
         return nuclides
         
     except FileNotFoundError:
@@ -278,8 +281,8 @@ Example usage:
     parser.add_argument(
         '--ensdf',
         type=str,
-        default="/Users/audreywarn/fluka-db-audrey/src/nuclear_data_output/json_data_modules/ascii/DECAY.ascii",
-        help="Path to ENSDF DECAY.ascii file"
+        default="/Users/audreywarn/fluka-db-audrey/src/nuclear_data_ascii/decay_transitions.txt",
+        help="Path to ENSDF decay data file"
     )
     parser.add_argument(
         '--chart',
