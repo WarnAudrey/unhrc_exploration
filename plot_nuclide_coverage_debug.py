@@ -72,6 +72,10 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                 continue
             
             try:
+                # Check if line starts with whitespace (multi-index continuation)
+                original_line = lines[line_num - 1]  # Get original line with leading spaces
+                is_continuation = original_line.startswith('  ') or original_line.startswith('\t')
+                
                 # Split by whitespace
                 parts = line.split()
                 
@@ -84,57 +88,53 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                 A = None
                 Z = None
                 
-                # Try ENDF format first (A Z ...)
-                try:
-                    A = int(parts[0])
-                    Z = int(parts[1])
-                    last_A = A
-                    last_Z = Z
-                    if debug and line_num < 15:
-                        print(f"Line {line_num}: ENDF format A={A}, Z={Z}")
-                except ValueError:
-                    # Not ENDF format, try ENSDF format (index Element-A ...)
-                    # Check if parts[1] looks like "Element-A" format
-                    if '-' in parts[1]:
-                        try:
-                            element_mass = parts[1].split('-')
-                            if len(element_mass) == 2:
-                                element_sym = element_mass[0]
-                                A = int(element_mass[1])
-                                Z = ELEMENT_TO_Z.get(element_sym)
-                                if Z is not None:
-                                    if debug and line_num < 15:
-                                        print(f"Line {line_num}: ENSDF format {element_sym}-{A} -> A={A}, Z={Z}")
-                                else:
-                                    if debug:
-                                        print(f"Line {line_num}: Unknown element: {element_sym}")
-                                    skipped_lines.append((line_num, f"unknown element {element_sym}", line[:80]))
-                                    continue
-                            else:
-                                raise ValueError("Invalid Element-A format")
-                        except (ValueError, IndexError) as e:
-                            # Not ENSDF either, try ENDF continuation (use last values)
-                            if last_A is not None and last_Z is not None:
-                                A = last_A
-                                Z = last_Z
-                                if debug and line_num < 20:
-                                    print(f"Line {line_num}: ENDF continuation, using A={A}, Z={Z}")
-                            else:
-                                if debug:
-                                    print(f"Line {line_num}: Cannot parse format: {parts[:3]}")
-                                skipped_lines.append((line_num, "cannot parse format", line[:80]))
-                                continue
+                # If continuation line, use last A and Z, find Parent in parts
+                if is_continuation:
+                    if last_A is not None and last_Z is not None:
+                        A = last_A
+                        Z = last_Z
+                        if debug and line_num < 25:
+                            print(f"Line {line_num}: Continuation line, using A={A}, Z={Z}")
                     else:
-                        # No hyphen, might be ENDF continuation
-                        if last_A is not None and last_Z is not None:
-                            A = last_A
-                            Z = last_Z
-                            if debug and line_num < 20:
-                                print(f"Line {line_num}: ENDF continuation, using A={A}, Z={Z}")
-                        else:
+                        if debug:
+                            print(f"Line {line_num}: Continuation but no previous A/Z")
+                        skipped_lines.append((line_num, "continuation without parent", line[:80]))
+                        continue
+                else:
+                    # Not a continuation, try to parse A and Z from first two columns
+                    try:
+                        A = int(parts[0])
+                        Z = int(parts[1])
+                        last_A = A
+                        last_Z = Z
+                        if debug and line_num < 15:
+                            print(f"Line {line_num}: Direct format A={A}, Z={Z}")
+                    except ValueError:
+                        # First columns aren't integers, try ENSDF Element-A format
+                        # Look for Element-A pattern in parts
+                        found_parent = False
+                        for i, part in enumerate(parts[:6]):  # Check first 6 fields
+                            if '-' in part:
+                                try:
+                                    element_mass = part.split('-')
+                                    if len(element_mass) == 2:
+                                        element_sym = element_mass[0]
+                                        A = int(element_mass[1])
+                                        Z = ELEMENT_TO_Z.get(element_sym)
+                                        if Z is not None:
+                                            last_A = A
+                                            last_Z = Z
+                                            found_parent = True
+                                            if debug and line_num < 15:
+                                                print(f"Line {line_num}: Element-A format {element_sym}-{A} -> A={A}, Z={Z}")
+                                            break
+                                except (ValueError, IndexError):
+                                    continue
+                        
+                        if not found_parent:
                             if debug:
-                                print(f"Line {line_num}: Cannot parse: {parts[:3]}")
-                            skipped_lines.append((line_num, "cannot parse", line[:80]))
+                                print(f"Line {line_num}: Cannot parse A and Z: {parts[:5]}")
+                            skipped_lines.append((line_num, "cannot parse A/Z", line[:80]))
                             continue
                 
                 # Sanity checks
