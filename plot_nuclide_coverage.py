@@ -2,13 +2,16 @@
 """
 Nuclide Coverage Comparison Plot
 
-This script creates a scatter plot comparing which nuclides (A, Z pairs) are present
+This script creates a scatter plot comparing which nuclides (N, Z pairs) are present
 in ENDF vs ENSDF DECAY data files.
 
+Comparison is done by matching both N (neutron number) and Z (atomic number).
+Nuclides near the valley of stability should appear in both datasets.
+
 Plot shows:
-- Blue: Nuclides in both ENDF and ENSDF
-- Red: Nuclides only in ENDF
-- Green: Nuclides only in ENSDF
+- Blue circles: Nuclides in both ENDF and ENSDF
+- Red triangles: Nuclides only in ENDF
+- Green squares: Nuclides only in ENSDF
 
 Only nuclides with Z <= 100 are shown (higher Z values are physically unrealistic
 for most decay applications).
@@ -23,18 +26,20 @@ import argparse
 
 def read_nuclides_from_decay_ascii(filepath):
     """
-    Read unique (A, Z) pairs from a DECAY.ascii file.
+    Read unique (N, Z) pairs from a DECAY.ascii file.
     
     The DECAY.ascii format has:
     - Line 1: Column headers (multi-level)
     - Line 2: Sub-headers
     - Line 3+: Data rows with format: A Z parentLevel decay_mode final_level ...
     
+    We convert A, Z to N, Z for comparison where N = A - Z (neutron number).
+    
     Args:
         filepath: Path to DECAY.ascii file
         
     Returns:
-        set: Set of (A, Z) tuples representing unique nuclides
+        set: Set of (N, Z) tuples representing unique nuclides
     """
     nuclides = set()
     
@@ -58,16 +63,17 @@ def read_nuclides_from_decay_ascii(filepath):
                 if len(parts) >= 2:
                     A = int(parts[0])  # Mass number
                     Z = int(parts[1])  # Atomic number
+                    N = A - Z           # Neutron number
                     
-                    # Add to set (automatically handles duplicates)
-                    nuclides.add((A, Z))
+                    # Add (N, Z) tuple to set (automatically handles duplicates)
+                    nuclides.add((N, Z))
                     
             except (ValueError, IndexError) as e:
                 # Skip malformed lines
                 print(f"Warning: Skipping malformed line {line_num}: {str(e)}")
                 continue
         
-        print(f"Read {len(nuclides)} unique nuclides from {filepath}")
+        print(f"Read {len(nuclides)} unique (N, Z) pairs from {filepath}")
         return nuclides
         
     except FileNotFoundError:
@@ -83,13 +89,13 @@ def filter_by_z_cutoff(nuclides, z_max=100):
     Filter nuclides to only include Z <= z_max.
     
     Args:
-        nuclides: Set of (A, Z) tuples
+        nuclides: Set of (N, Z) tuples
         z_max: Maximum Z value to include (default: 100)
         
     Returns:
-        set: Filtered set of (A, Z) tuples
+        set: Filtered set of (N, Z) tuples
     """
-    filtered = {(A, Z) for A, Z in nuclides if Z <= z_max}
+    filtered = {(N, Z) for N, Z in nuclides if Z <= z_max}
     removed = len(nuclides) - len(filtered)
     
     if removed > 0:
@@ -102,21 +108,24 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     """
     Create a scatter plot comparing ENDF and ENSDF nuclide coverage.
     
+    Compares nuclides based on both N (neutron number) and Z (atomic number).
+    
     Args:
-        endf_nuclides: Set of (A, Z) tuples from ENDF data
-        ensdf_nuclides: Set of (A, Z) tuples from ENSDF data
+        endf_nuclides: Set of (N, Z) tuples from ENDF data
+        ensdf_nuclides: Set of (N, Z) tuples from ENSDF data
         output_file: Path to save the plot image
     """
     # ========================================================================
-    # CATEGORIZE NUCLIDES
+    # CATEGORIZE NUCLIDES (comparing both N and Z)
     # ========================================================================
     # Use set operations to find differences and intersections
+    # Two nuclides are the same if they have identical (N, Z) pairs
     common = endf_nuclides & ensdf_nuclides      # In both datasets
     endf_only = endf_nuclides - ensdf_nuclides   # Only in ENDF
     ensdf_only = ensdf_nuclides - endf_nuclides  # Only in ENSDF
     
     print("\n" + "=" * 60)
-    print("NUCLIDE COVERAGE SUMMARY")
+    print("NUCLIDE COVERAGE COMPARISON (by N and Z)")
     print("=" * 60)
     print(f"Common to both:     {len(common):4d} nuclides")
     print(f"ENDF only:          {len(endf_only):4d} nuclides")
@@ -126,21 +135,59 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     print("=" * 60)
     
     # ========================================================================
+    # DIAGNOSE STABLE NUCLIDES (near valley of stability)
+    # ========================================================================
+    # Check for common stable nuclides (Z <= 20, |N-Z| <= 10)
+    # These should ideally be in both datasets
+    stable_region = {(N, Z) for N, Z in common 
+                     if Z <= 20 and abs(N - Z) <= 10}
+    
+    print(f"\nStable region check (Z≤20, |N-Z|≤10):")
+    print(f"  Found {len(stable_region)} common nuclides near stability")
+    
+    # Show some examples
+    if stable_region:
+        examples = sorted(stable_region)[:10]  # First 10
+        print(f"  Examples (N, Z): {examples[:5]}")
+    
+    # Check if any stable nuclides are missing from either dataset
+    known_stable = {
+        (6, 6),   # C-12
+        (7, 6),   # C-13
+        (7, 7),   # N-14
+        (8, 8),   # O-16
+        (10, 8),  # O-18
+        (20, 20), # Ca-40
+        (26, 26), # Fe-52
+    }
+    
+    stable_in_both = known_stable & common
+    stable_in_endf_only = known_stable & endf_only
+    stable_in_ensdf_only = known_stable & ensdf_only
+    
+    print(f"\nKnown stable nuclides check:")
+    print(f"  In both datasets: {len(stable_in_both)}/{len(known_stable)}")
+    if stable_in_endf_only:
+        print(f"  In ENDF only: {stable_in_endf_only}")
+    if stable_in_ensdf_only:
+        print(f"  In ENSDF only: {stable_in_ensdf_only}")
+    
+    # ========================================================================
     # PREPARE DATA FOR PLOTTING
     # ========================================================================
-    # Calculate N (neutron number = A - Z) and Z for each category
+    # Data is already in (N, Z) format
     
     # Common nuclides (blue)
-    common_N = [A - Z for A, Z in common]
-    common_Z = [Z for A, Z in common]
+    common_N = [N for N, Z in common]
+    common_Z = [Z for N, Z in common]
     
     # ENDF-only nuclides (red)
-    endf_N = [A - Z for A, Z in endf_only]
-    endf_Z = [Z for A, Z in endf_only]
+    endf_N = [N for N, Z in endf_only]
+    endf_Z = [Z for N, Z in endf_only]
     
     # ENSDF-only nuclides (green)
-    ensdf_N = [A - Z for A, Z in ensdf_only]
-    ensdf_Z = [Z for A, Z in ensdf_only]
+    ensdf_N = [N for N, Z in ensdf_only]
+    ensdf_Z = [Z for N, Z in ensdf_only]
     
     # ========================================================================
     # CREATE PLOT
@@ -181,8 +228,8 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     
     # Set axis limits with some padding
     if endf_nuclides or ensdf_nuclides:
-        all_Z = [Z for A, Z in (endf_nuclides | ensdf_nuclides)]
-        all_N = [A - Z for A, Z in (endf_nuclides | ensdf_nuclides)]
+        all_N = [N for N, Z in (endf_nuclides | ensdf_nuclides)]
+        all_Z = [Z for N, Z in (endf_nuclides | ensdf_nuclides)]
         
         plt.xlim(min(all_N) - 5, max(all_N) + 5)
         plt.ylim(min(all_Z) - 2, max(all_Z) + 2)
