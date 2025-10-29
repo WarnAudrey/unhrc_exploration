@@ -65,18 +65,18 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
         last_Z = None
         
         for line_num, line in enumerate(data_lines, start=3):
-            line = line.strip()
-            
             # Skip empty lines
-            if not line:
+            if not line.strip():
                 continue
             
             try:
-                # Check if line starts with whitespace (multi-index continuation)
-                original_line = lines[line_num - 1]  # Get original line with leading spaces
-                is_continuation = original_line.startswith('  ') or original_line.startswith('\t')
+                # Get original line with leading spaces to determine format
+                original_line = lines[line_num - 1]
                 
-                # Split by whitespace
+                # Find position of first non-space character
+                first_char_pos = len(original_line) - len(original_line.lstrip())
+                
+                # Split by whitespace for processing
                 parts = line.split()
                 
                 if len(parts) < 2:
@@ -88,54 +88,73 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                 A = None
                 Z = None
                 
-                # If continuation line, use last A and Z, find Parent in parts
-                if is_continuation:
+                # Determine format based on indentation:
+                # - Position 0-3: Normal line with A, Z, parentLevel, ...
+                # - Position 4-10: Blank-A line with Z, parentLevel, ... (A is blank)
+                # - Position >20: Continuation line with final_level, Parent, ... (A, Z, parentLevel, decay_mode blank)
+                
+                if first_char_pos > 20:
+                    # Continuation line: use last A and Z
                     if last_A is not None and last_Z is not None:
                         A = last_A
                         Z = last_Z
-                        if debug and line_num < 25:
-                            print(f"Line {line_num}: Continuation line, using A={A}, Z={Z}")
+                        if debug and line_num < 30:
+                            print(f"Line {line_num}: Continuation (indent={first_char_pos}), using A={A}, Z={Z}")
                     else:
                         if debug:
                             print(f"Line {line_num}: Continuation but no previous A/Z")
                         skipped_lines.append((line_num, "continuation without parent", line[:80]))
                         continue
-                else:
-                    # Not a continuation, try to parse A and Z from first two columns
+                        
+                elif first_char_pos >= 4 and first_char_pos <= 20:
+                    # Blank-A line: parts[0]=Z, parts[1]=parentLevel, need to find A from Parent
                     try:
-                        A = int(parts[0])
-                        Z = int(parts[1])
-                        last_A = A
-                        last_Z = Z
-                        if debug and line_num < 15:
-                            print(f"Line {line_num}: Direct format A={A}, Z={Z}")
-                    except ValueError:
-                        # First columns aren't integers, try ENSDF Element-A format
-                        # Look for Element-A pattern in parts
+                        Z = int(parts[0])
+                        # Find Parent (Element-A format) in parts
                         found_parent = False
-                        for i, part in enumerate(parts[:6]):  # Check first 6 fields
+                        for part in parts[3:7]:  # Parent should be around position 4-6
                             if '-' in part:
                                 try:
                                     element_mass = part.split('-')
                                     if len(element_mass) == 2:
                                         element_sym = element_mass[0]
                                         A = int(element_mass[1])
-                                        Z = ELEMENT_TO_Z.get(element_sym)
-                                        if Z is not None:
+                                        Z_check = ELEMENT_TO_Z.get(element_sym)
+                                        if Z_check == Z:  # Verify Z matches
                                             last_A = A
                                             last_Z = Z
                                             found_parent = True
-                                            if debug and line_num < 15:
-                                                print(f"Line {line_num}: Element-A format {element_sym}-{A} -> A={A}, Z={Z}")
+                                            if debug and line_num < 20:
+                                                print(f"Line {line_num}: Blank-A format (indent={first_char_pos}), Z={Z}, Parent={part} -> A={A}")
                                             break
                                 except (ValueError, IndexError):
                                     continue
                         
                         if not found_parent:
                             if debug:
-                                print(f"Line {line_num}: Cannot parse A and Z: {parts[:5]}")
-                            skipped_lines.append((line_num, "cannot parse A/Z", line[:80]))
+                                print(f"Line {line_num}: Blank-A but no Parent found: {parts[:6]}")
+                            skipped_lines.append((line_num, "blank-A no parent", line[:80]))
                             continue
+                    except ValueError:
+                        if debug:
+                            print(f"Line {line_num}: Blank-A but can't parse Z: {parts[:3]}")
+                        skipped_lines.append((line_num, "blank-A invalid Z", line[:80]))
+                        continue
+                        
+                else:
+                    # Normal line: parts[0]=A, parts[1]=Z
+                    try:
+                        A = int(parts[0])
+                        Z = int(parts[1])
+                        last_A = A
+                        last_Z = Z
+                        if debug and line_num < 15:
+                            print(f"Line {line_num}: Normal format (indent={first_char_pos}), A={A}, Z={Z}")
+                    except ValueError:
+                        if debug:
+                            print(f"Line {line_num}: Cannot parse A, Z from: {parts[:3]}")
+                        skipped_lines.append((line_num, "invalid A or Z", line[:80]))
+                        continue
                 
                 # Sanity checks
                 if A < 0 or A > 300:
