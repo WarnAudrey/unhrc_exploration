@@ -128,18 +128,18 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     # ========================================================================
     # PREPARE DATA FOR PLOTTING
     # ========================================================================
-    # Separate A and Z coordinates for each category
+    # Calculate N (neutron number = A - Z) and Z for each category
     
     # Common nuclides (blue)
-    common_A = [A for A, Z in common]
+    common_N = [A - Z for A, Z in common]
     common_Z = [Z for A, Z in common]
     
     # ENDF-only nuclides (red)
-    endf_A = [A for A, Z in endf_only]
+    endf_N = [A - Z for A, Z in endf_only]
     endf_Z = [Z for A, Z in endf_only]
     
     # ENSDF-only nuclides (green)
-    ensdf_A = [A for A, Z in ensdf_only]
+    ensdf_N = [A - Z for A, Z in ensdf_only]
     ensdf_Z = [Z for A, Z in ensdf_only]
     
     # ========================================================================
@@ -151,24 +151,24 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     # Plot in reverse order so most interesting data (differences) is on top
     
     if common:
-        plt.scatter(common_A, common_Z, 
+        plt.scatter(common_N, common_Z, 
                    c='blue', marker='o', s=20, alpha=0.4, 
                    label=f'Both ENDF & ENSDF ({len(common)})')
     
     if ensdf_only:
-        plt.scatter(ensdf_A, ensdf_Z, 
+        plt.scatter(ensdf_N, ensdf_Z, 
                    c='green', marker='s', s=30, alpha=0.7, 
                    label=f'ENSDF only ({len(ensdf_only)})')
     
     if endf_only:
-        plt.scatter(endf_A, endf_Z, 
+        plt.scatter(endf_N, endf_Z, 
                    c='red', marker='^', s=30, alpha=0.7, 
                    label=f'ENDF only ({len(endf_only)})')
     
     # ========================================================================
     # FORMAT PLOT
     # ========================================================================
-    plt.xlabel('Mass Number (A)', fontsize=12, fontweight='bold')
+    plt.xlabel('Neutron Number (N)', fontsize=12, fontweight='bold')
     plt.ylabel('Atomic Number (Z)', fontsize=12, fontweight='bold')
     plt.title('Nuclide Coverage Comparison: ENDF vs ENSDF Decay Data', 
               fontsize=14, fontweight='bold', pad=20)
@@ -182,9 +182,9 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     # Set axis limits with some padding
     if endf_nuclides or ensdf_nuclides:
         all_Z = [Z for A, Z in (endf_nuclides | ensdf_nuclides)]
-        all_A = [A for A, Z in (endf_nuclides | ensdf_nuclides)]
+        all_N = [A - Z for A, Z in (endf_nuclides | ensdf_nuclides)]
         
-        plt.xlim(min(all_A) - 5, max(all_A) + 5)
+        plt.xlim(min(all_N) - 5, max(all_N) + 5)
         plt.ylim(min(all_Z) - 2, max(all_Z) + 2)
     
     # Tight layout to prevent label cutoff
