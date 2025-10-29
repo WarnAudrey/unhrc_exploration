@@ -40,6 +40,10 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
         data_lines = lines[2:]
         print(f"Data lines (after skipping 2 header lines): {len(data_lines)}")
         
+        # Track last known A and Z for multi-index format
+        last_A = None
+        last_Z = None
+        
         for line_num, line in enumerate(data_lines, start=3):
             line = line.strip()
             
@@ -61,24 +65,21 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                 try:
                     A = int(parts[0])  # Mass number
                     Z = int(parts[1])  # Atomic number
+                    # Update last known values
+                    last_A = A
+                    last_Z = Z
                 except ValueError:
-                    # First column might be empty due to multi-index formatting
-                    # Try to find the first two integer values
-                    integers = []
-                    for i, part in enumerate(parts):
-                        try:
-                            integers.append((i, int(part)))
-                            if len(integers) == 2:
-                                break
-                        except ValueError:
-                            continue
-                    
-                    if len(integers) >= 2:
-                        A = integers[0][1]
-                        Z = integers[1][1]
+                    # Multi-index format: A and Z are blank (continuation row)
+                    # Use last known A and Z values
+                    if last_A is not None and last_Z is not None:
+                        A = last_A
+                        Z = last_Z
+                        if debug and line_num < 20:
+                            print(f"Line {line_num}: Using carried-over A={A}, Z={Z}")
                     else:
+                        # Cannot parse and no previous values
                         if debug:
-                            print(f"Line {line_num}: Cannot parse A and Z: {parts[:5]}")
+                            print(f"Line {line_num}: Cannot parse A and Z, no previous values: {parts[:5]}")
                         skipped_lines.append((line_num, "cannot parse A,Z", line[:80]))
                         continue
                 
