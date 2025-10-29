@@ -5,7 +5,7 @@ Nuclide Coverage Comparison Plot (with Debug Mode)
 This script creates a scatter plot comparing which nuclides (N, Z pairs) are present
 in ENDF vs ENSDF DECAY data files.
 
-Includes robust parsing and debug mode to diagnose data format issues.
+Handles both ENDF format (A Z ...) and ENSDF format (index Element-A ...).
 """
 
 import matplotlib
@@ -19,6 +19,10 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
     """
     Read unique (N, Z) pairs from a DECAY.ascii file with robust parsing.
     
+    Handles two formats:
+    1. ENDF format: A Z parentLevel decay_mode ...
+    2. ENSDF format: index Element-A energy units ...
+    
     Args:
         filepath: Path to DECAY.ascii file
         debug: If True, print diagnostic information
@@ -26,6 +30,22 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
     Returns:
         set: Set of (N, Z) tuples representing unique nuclides
     """
+    # Element symbol to Z mapping
+    ELEMENT_TO_Z = {
+        'H': 1, 'He': 2, 'Li': 3, 'Be': 4, 'B': 5, 'C': 6, 'N': 7, 'O': 8, 'F': 9, 'Ne': 10,
+        'Na': 11, 'Mg': 12, 'Al': 13, 'Si': 14, 'P': 15, 'S': 16, 'Cl': 17, 'Ar': 18, 'K': 19, 'Ca': 20,
+        'Sc': 21, 'Ti': 22, 'V': 23, 'Cr': 24, 'Mn': 25, 'Fe': 26, 'Co': 27, 'Ni': 28, 'Cu': 29, 'Zn': 30,
+        'Ga': 31, 'Ge': 32, 'As': 33, 'Se': 34, 'Br': 35, 'Kr': 36, 'Rb': 37, 'Sr': 38, 'Y': 39, 'Zr': 40,
+        'Nb': 41, 'Mo': 42, 'Tc': 43, 'Ru': 44, 'Rh': 45, 'Pd': 46, 'Ag': 47, 'Cd': 48, 'In': 49, 'Sn': 50,
+        'Sb': 51, 'Te': 52, 'I': 53, 'Xe': 54, 'Cs': 55, 'Ba': 56, 'La': 57, 'Ce': 58, 'Pr': 59, 'Nd': 60,
+        'Pm': 61, 'Sm': 62, 'Eu': 63, 'Gd': 64, 'Tb': 65, 'Dy': 66, 'Ho': 67, 'Er': 68, 'Tm': 69, 'Yb': 70,
+        'Lu': 71, 'Hf': 72, 'Ta': 73, 'W': 74, 'Re': 75, 'Os': 76, 'Ir': 77, 'Pt': 78, 'Au': 79, 'Hg': 80,
+        'Tl': 81, 'Pb': 82, 'Bi': 83, 'Po': 84, 'At': 85, 'Rn': 86, 'Fr': 87, 'Ra': 88, 'Ac': 89, 'Th': 90,
+        'Pa': 91, 'U': 92, 'Np': 93, 'Pu': 94, 'Am': 95, 'Cm': 96, 'Bk': 97, 'Cf': 98, 'Es': 99, 'Fm': 100,
+        'Md': 101, 'No': 102, 'Lr': 103, 'Rf': 104, 'Db': 105, 'Sg': 106, 'Bh': 107, 'Hs': 108, 'Mt': 109, 'Ds': 110,
+        'Rg': 111, 'Cn': 112, 'Nh': 113, 'Fl': 114, 'Mc': 115, 'Lv': 116, 'Ts': 117, 'Og': 118
+    }
+    
     nuclides = set()
     skipped_lines = []
     
@@ -40,7 +60,7 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
         data_lines = lines[2:]
         print(f"Data lines (after skipping 2 header lines): {len(data_lines)}")
         
-        # Track last known A and Z for multi-index format
+        # Track last known A and Z for ENDF multi-index format
         last_A = None
         last_Z = None
         
@@ -61,27 +81,61 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                     skipped_lines.append((line_num, "too few columns", line[:80]))
                     continue
                 
-                # Try to parse A and Z from first two columns
+                A = None
+                Z = None
+                
+                # Try ENDF format first (A Z ...)
                 try:
-                    A = int(parts[0])  # Mass number
-                    Z = int(parts[1])  # Atomic number
-                    # Update last known values
+                    A = int(parts[0])
+                    Z = int(parts[1])
                     last_A = A
                     last_Z = Z
+                    if debug and line_num < 15:
+                        print(f"Line {line_num}: ENDF format A={A}, Z={Z}")
                 except ValueError:
-                    # Multi-index format: A and Z are blank (continuation row)
-                    # Use last known A and Z values
-                    if last_A is not None and last_Z is not None:
-                        A = last_A
-                        Z = last_Z
-                        if debug and line_num < 20:
-                            print(f"Line {line_num}: Using carried-over A={A}, Z={Z}")
+                    # Not ENDF format, try ENSDF format (index Element-A ...)
+                    # Check if parts[1] looks like "Element-A" format
+                    if '-' in parts[1]:
+                        try:
+                            element_mass = parts[1].split('-')
+                            if len(element_mass) == 2:
+                                element_sym = element_mass[0]
+                                A = int(element_mass[1])
+                                Z = ELEMENT_TO_Z.get(element_sym)
+                                if Z is not None:
+                                    if debug and line_num < 15:
+                                        print(f"Line {line_num}: ENSDF format {element_sym}-{A} -> A={A}, Z={Z}")
+                                else:
+                                    if debug:
+                                        print(f"Line {line_num}: Unknown element: {element_sym}")
+                                    skipped_lines.append((line_num, f"unknown element {element_sym}", line[:80]))
+                                    continue
+                            else:
+                                raise ValueError("Invalid Element-A format")
+                        except (ValueError, IndexError) as e:
+                            # Not ENSDF either, try ENDF continuation (use last values)
+                            if last_A is not None and last_Z is not None:
+                                A = last_A
+                                Z = last_Z
+                                if debug and line_num < 20:
+                                    print(f"Line {line_num}: ENDF continuation, using A={A}, Z={Z}")
+                            else:
+                                if debug:
+                                    print(f"Line {line_num}: Cannot parse format: {parts[:3]}")
+                                skipped_lines.append((line_num, "cannot parse format", line[:80]))
+                                continue
                     else:
-                        # Cannot parse and no previous values
-                        if debug:
-                            print(f"Line {line_num}: Cannot parse A and Z, no previous values: {parts[:5]}")
-                        skipped_lines.append((line_num, "cannot parse A,Z", line[:80]))
-                        continue
+                        # No hyphen, might be ENDF continuation
+                        if last_A is not None and last_Z is not None:
+                            A = last_A
+                            Z = last_Z
+                            if debug and line_num < 20:
+                                print(f"Line {line_num}: ENDF continuation, using A={A}, Z={Z}")
+                        else:
+                            if debug:
+                                print(f"Line {line_num}: Cannot parse: {parts[:3]}")
+                            skipped_lines.append((line_num, "cannot parse", line[:80]))
+                            continue
                 
                 # Sanity checks
                 if A < 0 or A > 300:
@@ -106,9 +160,6 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                 
                 # Add (N, Z) tuple to set
                 nuclides.add((N, Z))
-                
-                if debug and line_num < 10:
-                    print(f"Line {line_num}: A={A}, Z={Z}, N={N} ✓")
                     
             except Exception as e:
                 if debug:
@@ -120,9 +171,9 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
         
         if skipped_lines:
             print(f"Skipped {len(skipped_lines)} lines due to parsing issues")
-            if debug or len(skipped_lines) > 100:
-                print("\nFirst 10 skipped lines:")
-                for line_num, reason, content in skipped_lines[:10]:
+            if debug and len(skipped_lines) > 0:
+                print(f"\nFirst 5 skipped lines:")
+                for line_num, reason, content in skipped_lines[:5]:
                     print(f"  Line {line_num} ({reason}): {content}")
         
         return nuclides
@@ -168,6 +219,10 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     stable_region = {(N, Z) for N, Z in common if Z <= 20 and abs(N - Z) <= 10}
     print(f"\nStable region (Z≤20, |N-Z|≤10): {len(stable_region)} common nuclides")
     
+    if stable_region:
+        examples = sorted(stable_region)[:10]
+        print(f"  Examples: {examples[:5]}")
+    
     # Check known stable nuclides
     known_stable = {
         (6, 6),   # C-12
@@ -185,6 +240,8 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     
     print(f"\nKnown stable nuclides:")
     print(f"  In both datasets: {len(stable_in_both)}/{len(known_stable)}")
+    if stable_in_both:
+        print(f"    {stable_in_both}")
     if stable_in_endf_only:
         print(f"  In ENDF only: {stable_in_endf_only}")
     if stable_in_ensdf_only:
