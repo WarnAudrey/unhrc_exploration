@@ -107,39 +107,62 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                         continue
                         
                 elif first_char_pos >= 4 and first_char_pos <= 20:
-                    # Blank-A line: parts[0]=Z, parts[1]=parentLevel, need to find A from Parent
-                    try:
-                        Z = int(parts[0])
-                        # Find Parent (Element-A format) in parts
-                        found_parent = False
-                        for part in parts[3:7]:  # Parent should be around position 4-6
-                            if '-' in part:
-                                try:
-                                    element_mass = part.split('-')
-                                    if len(element_mass) == 2:
-                                        element_sym = element_mass[0]
-                                        A = int(element_mass[1])
-                                        Z_check = ELEMENT_TO_Z.get(element_sym)
-                                        if Z_check == Z:  # Verify Z matches
-                                            last_A = A
-                                            last_Z = Z
-                                            found_parent = True
-                                            if debug and line_num < 20:
-                                                print(f"Line {line_num}: Blank-A format (indent={first_char_pos}), Z={Z}, Parent={part} -> A={A}")
-                                            break
-                                except (ValueError, IndexError):
-                                    continue
-                        
-                        if not found_parent:
+                    # Check if first field looks like a decay mode (delayed particle format)
+                    first_field = parts[0]
+                    is_decay_mode = (
+                        first_field.startswith('B-') or 
+                        first_field.startswith('B+') or 
+                        first_field.startswith('EC') or
+                        first_field == 'A'
+                    )
+                    
+                    if is_decay_mode:
+                        # Delayed particle format: decay_mode final_level Parent ...
+                        # Use last A and Z
+                        if last_A is not None and last_Z is not None:
+                            A = last_A
+                            Z = last_Z
+                            if debug and line_num < 100:
+                                print(f"Line {line_num}: Delayed particle (indent={first_char_pos}), decay={first_field}, using A={A}, Z={Z}")
+                        else:
                             if debug:
-                                print(f"Line {line_num}: Blank-A but no Parent found: {parts[:6]}")
-                            skipped_lines.append((line_num, "blank-A no parent", line[:80]))
+                                print(f"Line {line_num}: Delayed particle but no previous A/Z")
+                            skipped_lines.append((line_num, "delayed particle without parent", line[:80]))
                             continue
-                    except ValueError:
-                        if debug:
-                            print(f"Line {line_num}: Blank-A but can't parse Z: {parts[:3]}")
-                        skipped_lines.append((line_num, "blank-A invalid Z", line[:80]))
-                        continue
+                    else:
+                        # Blank-A line: parts[0]=Z, parts[1]=parentLevel, need to find A from Parent
+                        try:
+                            Z = int(parts[0])
+                            # Find Parent (Element-A format) in parts
+                            found_parent = False
+                            for part in parts[3:7]:  # Parent should be around position 4-6
+                                if '-' in part:
+                                    try:
+                                        element_mass = part.split('-')
+                                        if len(element_mass) == 2:
+                                            element_sym = element_mass[0]
+                                            A = int(element_mass[1])
+                                            Z_check = ELEMENT_TO_Z.get(element_sym)
+                                            if Z_check == Z:  # Verify Z matches
+                                                last_A = A
+                                                last_Z = Z
+                                                found_parent = True
+                                                if debug and line_num < 20:
+                                                    print(f"Line {line_num}: Blank-A format (indent={first_char_pos}), Z={Z}, Parent={part} -> A={A}")
+                                                break
+                                    except (ValueError, IndexError):
+                                        continue
+                            
+                            if not found_parent:
+                                if debug:
+                                    print(f"Line {line_num}: Blank-A but no Parent found: {parts[:6]}")
+                                skipped_lines.append((line_num, "blank-A no parent", line[:80]))
+                                continue
+                        except ValueError:
+                            if debug:
+                                print(f"Line {line_num}: Blank-A but can't parse Z: {parts[:3]}")
+                            skipped_lines.append((line_num, "blank-A invalid Z", line[:80]))
+                            continue
                         
                 else:
                     # Normal line: parts[0]=A, parts[1]=Z
