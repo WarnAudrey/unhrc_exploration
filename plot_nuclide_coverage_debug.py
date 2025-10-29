@@ -223,29 +223,30 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
         examples = sorted(stable_region)[:10]
         print(f"  Examples: {examples[:5]}")
     
-    # Check known stable nuclides
-    known_stable = {
-        (6, 6),   # C-12
-        (7, 6),   # C-13
-        (7, 7),   # N-14
-        (8, 8),   # O-16
-        (10, 8),  # O-18
-        (20, 20), # Ca-40
-        (26, 26), # Fe-52
+    # Check known radioactive nuclides (common ones that should be in both datasets)
+    known_radioactive = {
+        (2, 1),    # H-3 (tritium)
+        (8, 6),    # C-14
+        (14, 11),  # Na-25
+        (33, 27),  # Co-60
+        (52, 38),  # Sr-90
+        (89, 55),  # Cs-144
+        (90, 62),  # Sm-152
+        (146, 92), # U-238
     }
     
-    stable_in_both = known_stable & common
-    stable_in_endf_only = known_stable & endf_only
-    stable_in_ensdf_only = known_stable & ensdf_only
+    radio_in_both = known_radioactive & common
+    radio_in_endf_only = known_radioactive & endf_only
+    radio_in_ensdf_only = known_radioactive & ensdf_only
     
-    print(f"\nKnown stable nuclides:")
-    print(f"  In both datasets: {len(stable_in_both)}/{len(known_stable)}")
-    if stable_in_both:
-        print(f"    {stable_in_both}")
-    if stable_in_endf_only:
-        print(f"  In ENDF only: {stable_in_endf_only}")
-    if stable_in_ensdf_only:
-        print(f"  In ENSDF only: {stable_in_ensdf_only}")
+    print(f"\nKnown radioactive nuclides (validation set):")
+    print(f"  In both datasets: {len(radio_in_both)}/{len(known_radioactive)}")
+    if radio_in_both:
+        print(f"    {radio_in_both}")
+    if radio_in_endf_only:
+        print(f"  In ENDF only: {radio_in_endf_only}")
+    if radio_in_ensdf_only:
+        print(f"  In ENSDF only: {radio_in_ensdf_only}")
     
     # Prepare data for plotting
     common_N = [N for N, Z in common]
