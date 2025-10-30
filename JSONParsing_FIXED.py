@@ -418,148 +418,15 @@ class NuclearDataModule:
     
     def split_ec_bplus_decays(self):
         """
-        Split EC/β+ decays into separate β+ and EC components according to ENSDF specification.
-        
-        According to ENSDF manual (ensdfman.pdf, page 17):
-        - IB = Intensity of β⁺-decay branch
-        - IE = Intensity of electron capture branch  
-        - TI = Total (ε + β⁺) decay intensity
-        - Formula: TI = IB + IE
-        
-        In JSON files, the 'betaIntensity' field corresponds to IB (β+ component only).
-        The EC component (IE) must be calculated as: IE = TI - IB
-        
-        For ground-state decays, TI = 100% (total branching)
-        For decays from excited states, TI may be less than 100%
-        
-        This creates two rows for each EC/β+ decay:
-        1. B+ row with measured β+ intensity (IB)
-        2. EC row with calculated EC intensity (IE = TI - IB)
+        EC/β+ splitting disabled - EC decays are not parsed.
+        This method is kept for compatibility but does nothing.
         
         Returns:
         --------
-        int : Number of decays that were split
+        int : Always returns 0 (no splitting performed)
         """
-        if self.decay_df.empty:
-            print("No decay data available for EC/β+ splitting.")
-            return 0
-        
-        # Reset index to work with the data
-        decay_temp = self.decay_df.reset_index()
-        
-        # Find all β+ decays (B+ mode)
-        bplus_mask = decay_temp['decay_mode'] == 'B+'
-        bplus_decays = decay_temp[bplus_mask].copy()
-        
-        if bplus_decays.empty:
-            print("No β+ decays found to split.")
-            return 0
-        
-        print(f"\nSplitting {len(bplus_decays)} β+/EC decays according to ENSDF specification...")
-        print("ENSDF formula: Total Intensity (TI) = β+ Intensity (IB) + EC Intensity (IE)")
-        
-        # Create EC companion rows
-        ec_rows = []
-        split_count = 0
-        
-        # Group by parent to determine total branching per level
-        for (A, Z, parentLevel), group in bplus_decays.groupby(['A', 'Z', 'parentLevel']):
-            # For ground state (parentLevel=0), total branching should be 100%
-            # For excited states, sum all β+ branches from this level to get TI
-            total_intensity = 0.0
-            
-            for idx, row in group.iterrows():
-                # Extract β+ intensity (IB in ENSDF notation)
-                bplus_intensity_str = row['Intensity']
-                
-                if pd.isna(bplus_intensity_str) or bplus_intensity_str == "":
-                    bplus_intensity = 0.0
-                else:
-                    # Parse β+ intensity
-                    try:
-                        if isinstance(bplus_intensity_str, str):
-                            intensity_clean = bplus_intensity_str.replace('%', '').strip()
-                            bplus_intensity = float(intensity_clean)
-                        else:
-                            bplus_intensity = float(bplus_intensity_str)
-                    except (ValueError, TypeError):
-                        bplus_intensity = 0.0
-                
-                total_intensity += bplus_intensity
-            
-            # If we have any β+ intensity from this level, calculate EC
-            if total_intensity > 0:
-                # For each β+ transition, create corresponding EC transition
-                for idx, row in group.iterrows():
-                    bplus_intensity_str = row['Intensity']
-                    
-                    if pd.isna(bplus_intensity_str) or bplus_intensity_str == "":
-                        bplus_intensity = 0.0
-                    else:
-                        try:
-                            if isinstance(bplus_intensity_str, str):
-                                intensity_clean = bplus_intensity_str.replace('%', '').strip()
-                                bplus_intensity = float(intensity_clean)
-                            else:
-                                bplus_intensity = float(bplus_intensity_str)
-                        except (ValueError, TypeError):
-                            bplus_intensity = 0.0
-                    
-                    # ENSDF formula: TI = IB + IE
-                    # For ground state: TI = 100%
-                    # For excited state: TI = total β+ branching from this level
-                    if parentLevel == 0:
-                        TI = 100.0  # Ground state total branching
-                    else:
-                        TI = total_intensity  # Excited state total branching
-                    
-                    # Calculate EC intensity: IE = TI - IB
-                    ec_intensity = max(0.0, TI - bplus_intensity)
-                    
-                    # Only create EC row if there's EC component
-                    if ec_intensity > 0:
-                        # Create EC row (copy of β+ row but with EC mode and different intensity)
-                        ec_row = row.copy()
-                        ec_row['decay_mode'] = 'EC'
-                        ec_row['Intensity'] = self.format_scientific_notation(ec_intensity, "%")
-                        # EC decays don't have β+ endpoint or average energy
-                        ec_row['Endpoint energy'] = ""
-                        ec_row['Average energy'] = ""
-                        
-                        ec_rows.append(ec_row)
-                        split_count += 1
-                        
-                        if split_count <= 5:  # Show first few examples
-                            print(f"  Example: {row['Parent']} level {parentLevel}")
-                            print(f"    TI = {TI:.2f}%, IB (β+) = {bplus_intensity:.2f}%, IE (EC) = {ec_intensity:.2f}%")
-        
-        # Concatenate original data with new EC rows
-        if ec_rows:
-            ec_df = pd.DataFrame(ec_rows)
-            decay_combined = pd.concat([decay_temp, ec_df], ignore_index=True)
-            
-            # Sort by the index columns
-            decay_combined.sort_values(
-                by=["A", "Z", "parentLevel", "decay_mode", "final_level"], 
-                inplace=True
-            )
-            
-            # Restore index
-            self.decay_df = decay_combined.set_index(['A', 'Z', 'parentLevel', 'decay_mode', 'final_level'])
-            
-            print(f"\nSuccessfully split {split_count} β+/EC transitions into β+ and EC components")
-            print(f"Total decay transitions after splitting: {len(self.decay_df)}")
-            
-            # Display breakdown by decay type after splitting
-            decay_modes = self.decay_df.index.get_level_values('decay_mode').unique()
-            print("\nDecay modes after EC/β+ splitting:")
-            for mode in sorted(decay_modes):
-                count = len(self.decay_df.xs(mode, level='decay_mode'))
-                print(f"  - {mode}: {count} transitions")
-        else:
-            print("\nNo EC components found (all transitions are 100% β+)")
-        
-        return split_count
+        print("\nEC/β+ splitting skipped - EC decays not included in dataset")
+        return 0
 
     def add_delayed_particle_normalization(self):
         """
@@ -683,9 +550,9 @@ class NuclearDataModule:
                     normalizations = self.extract_delayed_particle_normalization(json_data, filename)
                     self.normalization_lookup.update(normalizations)
             
-            # If not delayed particle, must be B-, B+, or EC
+            # If not delayed particle, must be B- or B+
             if not is_delayed_in_beta:
-                if decay_mode not in ['B-', 'B+', 'EC']:
+                if decay_mode not in ['B-', 'B+']:
                     return []
 
         # Build level lookup by index, with safety (make int)
@@ -913,55 +780,7 @@ class NuclearDataModule:
                     "Intensity": intensity_str,
                 })
         
-        # Handle electron capture decays (EC)
-        elif decay_mode == 'EC':
-            for ec in json_data.get('electronCaptureTable', {}).get('electronCaptures', []):
-                # Convert final_level to integer
-                final_level = ec.get('finalLevel')
-                if final_level is not None:
-                    try:
-                        final_level = int(final_level)
-                    except (ValueError, TypeError):
-                        final_level = None
-                
-                level_energy = level_lookup.get(final_level, "")
-
-                # Extract parent level from EC decay data
-                parent_level = ec.get('parentLevel')
-                if parent_level is None:
-                    # If parent level is not explicitly given, assume ground state (level 0)
-                    parent_level = 0
-
-                # For EC, we might have different energy fields
-                # Safely extract capture energy or binding energy
-                capture_e = ec.get('captureEnergy', {})
-                energy_value, energy_unit = None, ''
-                if isinstance(capture_e, dict):
-                    energy_value = capture_e.get('value')
-                    energy_unit = capture_e.get('unit', '')
-                endpoint_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
-
-                # For EC, average energy might not be available or be different
-                avg_str = ""  # EC doesn't typically have average energy like beta decay
-
-                # Safely extract EC intensity
-                ec_i = ec.get('electronCaptureIntensity', {})
-                ec_value = None
-                if isinstance(ec_i, dict):
-                    ec_value = ec_i.get('value')
-                intensity_str = self.format_scientific_notation(ec_value, "%") if ec_value is not None else ""
-
-                rows.append({
-                    "A": parent_a,
-                    "Z": parent_z,
-                    "parentLevel": parent_level,
-                    "decay_mode": decay_mode,
-                    "final_level": final_level,
-                    "Parent": f"{parent_symbol}-{parent_a}",
-                    "Endpoint energy": endpoint_str,
-                    "Average energy": avg_str,
-                    "Intensity": intensity_str,
-                })
+        # EC decays are not parsed - skipped intentionally
         
         return rows
 
@@ -1145,9 +964,8 @@ class NuclearDataModule:
                 count = len(self.decay_df.xs(mode, level='decay_mode'))
                 print(f"  - {mode}: {count} transitions")
             
-            # Apply EC/β+ splitting
-            print("\nApplying EC/β+ decay splitting...")
-            self.split_ec_bplus_decays()
+            # EC/β+ splitting disabled - EC not parsed
+            # self.split_ec_bplus_decays()
         
         # Create nuclides DataFrame
         if all_nuclides_rows:
