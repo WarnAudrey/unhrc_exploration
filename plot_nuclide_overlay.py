@@ -142,6 +142,50 @@ def plot_nuclide_overlay(endf_nuclides, ensdf_nuclides,
     print(f"Total ENSDF:        {len(ensdf_nuclides):4d} nuclides")
     print("=" * 60)
     
+    # Check proton-rich vs neutron-rich distribution
+    print(f"\n" + "=" * 60)
+    print("PROTON-RICH vs NEUTRON-RICH DISTRIBUTION")
+    print("=" * 60)
+    
+    # ENDF distribution
+    endf_proton_rich = {(N, Z) for N, Z in endf_nuclides if N < Z}
+    endf_neutron_rich = {(N, Z) for N, Z in endf_nuclides if N > Z}
+    endf_n_equals_z = {(N, Z) for N, Z in endf_nuclides if N == Z}
+    
+    print(f"ENDF dataset:")
+    print(f"  Proton-rich (N<Z):   {len(endf_proton_rich):4d} ({100*len(endf_proton_rich)/len(endf_nuclides):.1f}%)")
+    print(f"  N=Z line:            {len(endf_n_equals_z):4d} ({100*len(endf_n_equals_z)/len(endf_nuclides):.1f}%)")
+    print(f"  Neutron-rich (N>Z):  {len(endf_neutron_rich):4d} ({100*len(endf_neutron_rich)/len(endf_nuclides):.1f}%)")
+    
+    # ENSDF distribution
+    ensdf_proton_rich = {(N, Z) for N, Z in ensdf_nuclides if N < Z}
+    ensdf_neutron_rich = {(N, Z) for N, Z in ensdf_nuclides if N > Z}
+    ensdf_n_equals_z = {(N, Z) for N, Z in ensdf_nuclides if N == Z}
+    
+    print(f"\nENSDF dataset:")
+    print(f"  Proton-rich (N<Z):   {len(ensdf_proton_rich):4d} ({100*len(ensdf_proton_rich)/len(ensdf_nuclides):.1f}%)")
+    print(f"  N=Z line:            {len(ensdf_n_equals_z):4d} ({100*len(ensdf_n_equals_z)/len(ensdf_nuclides):.1f}%)")
+    print(f"  Neutron-rich (N>Z):  {len(ensdf_neutron_rich):4d} ({100*len(ensdf_neutron_rich)/len(ensdf_nuclides):.1f}%)")
+    
+    # Check overlap in each region
+    common_proton_rich = endf_proton_rich & ensdf_proton_rich
+    common_neutron_rich = endf_neutron_rich & ensdf_neutron_rich
+    
+    print(f"\nOverlap by region:")
+    print(f"  Proton-rich:   {len(common_proton_rich):4d}/{len(endf_proton_rich):4d} ENDF ({100*len(common_proton_rich)/len(endf_proton_rich):.1f}% coverage)")
+    print(f"                 {len(common_proton_rich):4d}/{len(ensdf_proton_rich):4d} ENSDF ({100*len(common_proton_rich)/len(ensdf_proton_rich):.1f}% coverage)")
+    print(f"  Neutron-rich:  {len(common_neutron_rich):4d}/{len(endf_neutron_rich):4d} ENDF ({100*len(common_neutron_rich)/len(endf_neutron_rich):.1f}% coverage)")
+    print(f"                 {len(common_neutron_rich):4d}/{len(ensdf_neutron_rich):4d} ENSDF ({100*len(common_neutron_rich)/len(ensdf_neutron_rich):.1f}% coverage)")
+    
+    # Missing in ENSDF
+    ensdf_missing_proton = endf_proton_rich - ensdf_proton_rich
+    ensdf_missing_neutron = endf_neutron_rich - ensdf_neutron_rich
+    
+    print(f"\nMissing from ENSDF:")
+    print(f"  Proton-rich:   {len(ensdf_missing_proton):4d} nuclides")
+    print(f"  Neutron-rich:  {len(ensdf_missing_neutron):4d} nuclides")
+    print("=" * 60)
+    
     # ========================================================================
     # PREPARE DATA FOR PLOTTING
     # ========================================================================
