@@ -47,17 +47,18 @@ class DecayData:
     """Simple container for decay data from JEFF parser."""
     def __init__(self, jeff_dict):
         """Initialize from JEFF parser dictionary output."""
-        self.parent_A = jeff_dict["ZA"] % 1000
-        self.parent_Z = jeff_dict["ZA"] // 1000
-        self.parent_level_energy = 0.0  # JEFF doesn't provide this directly
+        self.parent_A = int(jeff_dict["ZA"] % 1000)
+        self.parent_Z = int(jeff_dict["ZA"] // 1000)
+        self.parent_level_energy = float(0.0)  # JEFF doesn't provide this directly
         self.element = ATOMIC_SYMBOL.get(self.parent_Z, f'Z{self.parent_Z}')
         
-        # Half-life
+        # Half-life - ensure it's a float
         if "T1/2" in jeff_dict and jeff_dict["T1/2"]:
-            self.half_life = jeff_dict["T1/2"][0]
+            hl_val = jeff_dict["T1/2"][0] if isinstance(jeff_dict["T1/2"], tuple) else jeff_dict["T1/2"]
+            self.half_life = float(hl_val)
             self.hl_unit = 's'
         else:
-            self.half_life = 0.0
+            self.half_life = float(0.0)
             self.hl_unit = 's'
         
         # Decay modes with branching ratios
@@ -68,7 +69,7 @@ class DecayData:
                 mode_str = self._decode_rtyp(mode["RTYP"])
                 br = mode["BR"][0] if isinstance(mode["BR"], tuple) else mode["BR"]
                 # Convert to percentage if needed
-                br_pct = br * 100.0 if br <= 1.0 else br
+                br_pct = float(br * 100.0 if br <= 1.0 else br)
                 self.decay_modes[mode_str] = br_pct
         
         # Energy information (from spectra)
@@ -81,7 +82,8 @@ class DecayData:
                 
                 # Get mean energy
                 if "ER_AV" in spec and spec["ER_AV"]:
-                    avg_e = spec["ER_AV"][0]
+                    avg_e = spec["ER_AV"][0] if isinstance(spec["ER_AV"], tuple) else spec["ER_AV"]
+                    avg_e = float(avg_e)
                     
                     # Map STYP to mode string
                     if styp == 2:  # Beta+
@@ -95,7 +97,8 @@ class DecayData:
                 if styp == 2 and "discrete" in spec and spec["discrete"]:
                     for disc in spec["discrete"]:
                         if "ER" in disc:
-                            endpoint = disc["ER"][0]
+                            endpoint = disc["ER"][0] if isinstance(disc["ER"], tuple) else disc["ER"]
+                            endpoint = float(endpoint)
                             for mode_str in self.decay_modes:
                                 if mode_str.startswith('B+') or mode_str.startswith('EC/B+'):
                                     self.endpoint_energies[mode_str] = endpoint
