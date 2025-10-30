@@ -340,27 +340,51 @@ class ENDFDataModule:
         
         self.nuclides_df = self.nuclide_df  # Alias
     
-    def get_decay_dataframe(self) -> pd.DataFrame:
-        """Return the DECAY DataFrame."""
+    def get_decay_dataframe(self, with_index: bool = False) -> pd.DataFrame:
+        """
+        Return the DECAY DataFrame.
+        
+        Args:
+            with_index: If True, return with multi-index already set
+        """
         if not hasattr(self, 'decay_df'):
             self._parse_to_dataframes()
+        
+        if with_index and not self.decay_df.empty:
+            if not isinstance(self.decay_df.index, pd.MultiIndex):
+                df = self.decay_df.copy()
+                df = df.set_index(['A', 'Z', 'parentLevel', 'decay_mode', 'final_level'])
+                return df
+        
         return self.decay_df
     
-    def get_nuclide_dataframe(self) -> pd.DataFrame:
-        """Return the NUCLIDE DataFrame."""
+    def get_nuclide_dataframe(self, with_index: bool = False) -> pd.DataFrame:
+        """
+        Return the NUCLIDE DataFrame.
+        
+        Args:
+            with_index: If True, return with multi-index already set
+        """
         if not hasattr(self, 'nuclide_df'):
             self._parse_to_dataframes()
+        
+        if with_index and not self.nuclide_df.empty:
+            if not isinstance(self.nuclide_df.index, pd.MultiIndex):
+                df = self.nuclide_df.copy()
+                df = df.set_index(['A', 'Z', 'level'])
+                return df
+        
         return self.nuclide_df
     
     # Compatibility methods
-    def get_decay_data(self):
-        return self.get_decay_dataframe()
+    def get_decay_data(self, with_index: bool = False):
+        return self.get_decay_dataframe(with_index=with_index)
     
-    def get_nuclide_data(self):
-        return self.get_nuclide_dataframe()
+    def get_nuclide_data(self, with_index: bool = False):
+        return self.get_nuclide_dataframe(with_index=with_index)
     
-    def get_nuclides_data(self):
-        return self.get_nuclide_dataframe()
+    def get_nuclides_data(self, with_index: bool = False):
+        return self.get_nuclide_dataframe(with_index=with_index)
     
     def display_summary(self):
         """Display summary statistics."""
