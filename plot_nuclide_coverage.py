@@ -15,6 +15,10 @@ Plot shows:
 
 Only nuclides with Z <= 100 are shown (higher Z values are physically unrealistic
 for most decay applications).
+
+NOTE: EC (Electron Capture) decays are NOT included in the final datasets.
+Both ENDF and ENSDF parsers exclude EC after using it for β+/EC splitting calculations.
+Datasets include: α, β-, β+, and delayed particle decays (B-n, B+p, B-a, etc.).
 """
 
 import matplotlib

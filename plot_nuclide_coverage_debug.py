@@ -6,6 +6,9 @@ This script creates a scatter plot comparing which nuclides (N, Z pairs) are pre
 in ENDF vs ENSDF DECAY data files.
 
 Handles both ENDF format (A Z ...) and ENSDF format (index Element-A ...).
+
+NOTE: EC (Electron Capture) decays are NOT included in the final datasets.
+Both ENDF and ENSDF parsers exclude EC after using it for β+/EC splitting calculations.
 """
 
 import matplotlib
@@ -108,11 +111,11 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
                         
                 elif first_char_pos >= 4 and first_char_pos <= 20:
                     # Check if first field looks like a decay mode (delayed particle format)
+                    # NOTE: EC is NOT in the dataset (removed after β+/EC splitting)
                     first_field = parts[0]
                     is_decay_mode = (
                         first_field.startswith('B-') or 
                         first_field.startswith('B+') or 
-                        first_field.startswith('EC') or
                         first_field == 'A'
                     )
                     
