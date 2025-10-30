@@ -644,6 +644,9 @@ class NuclearDataModule:
         if parent_z is None:
             return []
         
+        # Initialize flag for delayed particles in beta-decay files
+        is_delayed_in_beta = False
+        
         # Determine decay mode from JSON
         decay_mode_from_file = json_data.get('decayMode', '')
         
