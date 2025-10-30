@@ -68,22 +68,35 @@ class ENDFDataModule:
             try:
                 print(f"  Parsing: {file_path.name}")
                 
+                # Debug: show what methods the parser has
+                parser_methods = [m for m in dir(parser) if not m.startswith('_')]
+                print(f"    Available parser methods: {parser_methods[:10]}...")
+                
                 # Try different method names that the parser might have
                 if hasattr(parser, 'parse_file'):
+                    print(f"    Using parser.parse_file()")
                     decay_list = parser.parse_file(str(file_path))
                 elif hasattr(parser, 'parse'):
+                    print(f"    Using parser.parse()")
                     decay_list = parser.parse(str(file_path))
                 elif hasattr(parser, 'read_file'):
+                    print(f"    Using parser.read_file()")
                     decay_list = parser.read_file(str(file_path))
                 elif hasattr(parser, 'load_file'):
+                    print(f"    Using parser.load_file()")
                     decay_list = parser.load_file(str(file_path))
                 else:
                     # Try calling the parser directly with the file path
+                    print(f"    Using parser() directly")
                     decay_list = parser(str(file_path))
+                
+                print(f"    Result: {type(decay_list)}, length: {len(decay_list) if decay_list else 0}")
                 
                 if decay_list:
                     self.decay_data.extend(decay_list)
                     self.source_files.append(str(file_path))
+                else:
+                    print(f"    WARNING: Parser returned empty or None!")
                     
             except Exception as e:
                 print(f"    ERROR parsing {file_path.name}: {e}")
