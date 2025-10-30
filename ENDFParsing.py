@@ -327,19 +327,16 @@ class ENDFDataModule:
                 if self._is_important_decay_mode(mode):
                     decay_rows.append(decay_row)
         
-        # Convert to DataFrames
+        # Convert to DataFrames (NO multi-index - DataModule handles that)
         self.decay_df = pd.DataFrame(decay_rows) if decay_rows else pd.DataFrame()
         self.nuclide_df = pd.DataFrame(nuclide_rows) if nuclide_rows else pd.DataFrame()
         
-        # Set multi-index for DECAY DataFrame (expected by Database.py)
+        # Sort but DO NOT set index yet - DataModule.populate_DM_from_endf_data() expects regular columns
         if not self.decay_df.empty:
             self.decay_df = self.decay_df.sort_values(['A', 'Z', 'parentLevel', 'decay_mode', 'final_level'])
-            self.decay_df = self.decay_df.set_index(['A', 'Z', 'parentLevel', 'decay_mode', 'final_level'])
         
-        # Set multi-index for NUCLIDE DataFrame (expected by Database.py)
         if not self.nuclide_df.empty:
             self.nuclide_df = self.nuclide_df.sort_values(['A', 'Z', 'level'])
-            self.nuclide_df = self.nuclide_df.set_index(['A', 'Z', 'level'])
         
         self.nuclides_df = self.nuclide_df  # Alias
     
