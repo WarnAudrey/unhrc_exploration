@@ -86,10 +86,12 @@ class ENDFDataModule:
                     self.source_files.append(str(file_path))
                     
             except Exception as e:
-                print(f"    Warning: Failed to parse {file_path.name}: {e}")
+                print(f"    ERROR parsing {file_path.name}: {e}")
                 import traceback
+                print("Full traceback:")
                 traceback.print_exc()
-                continue
+                # Don't continue - we need to see what's failing
+                raise
         
         print(f"\nLoaded {len(self.decay_data)} decay entries from {len(self.source_files)} files")
     
@@ -280,6 +282,10 @@ class ENDFDataModule:
     
     def get_nuclide_data(self):
         """Alias for get_nuclide_dataframe() for compatibility."""
+        return self.get_nuclide_dataframe()
+    
+    def get_nuclides_data(self):
+        """Alias for get_nuclide_dataframe() for compatibility (plural form)."""
         return self.get_nuclide_dataframe()
     
     def display_summary(self):
