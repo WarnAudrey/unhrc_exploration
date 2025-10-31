@@ -92,7 +92,8 @@ def count_unique_nuclides(filepath):
     print(f"\nSample nuclides (first 10):")
     for A, Z in sorted(nuclides)[:10]:
         N = A - Z
-        print(f"  A={A:3d} Z={Z:3d} N={N:3d} | N/Z={N/Z:.3f}")
+        ratio = N/Z if Z > 0 else 0
+        print(f"  A={A:3d} Z={Z:3d} N={N:3d} | N/Z={ratio:.3f}")
     
     # Show first 10 lines of actual data
     print(f"\nFirst 10 data lines from file:")
