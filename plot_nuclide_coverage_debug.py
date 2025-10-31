@@ -315,6 +315,28 @@ def plot_nuclide_comparison(endf_nuclides, ensdf_nuclides, output_file="nuclide_
     print(f"\nMissing from ENSDF:")
     print(f"  Proton-rich:   {len(ensdf_missing_proton):4d} nuclides")
     print(f"  Neutron-rich:  {len(ensdf_missing_neutron):4d} nuclides")
+    
+    # Print detailed list of missing nuclides
+    if ensdf_missing_proton:
+        print(f"\n" + "-" * 60)
+        print(f"PROTON-RICH NUCLIDES MISSING FROM ENSDF ({len(ensdf_missing_proton)} total):")
+        print(f"-" * 60)
+        # Sort by Z then N for readability
+        missing_sorted = sorted(ensdf_missing_proton, key=lambda x: (x[1], x[0]))
+        for N, Z in missing_sorted:
+            A = N + Z
+            print(f"  N={N:3d} Z={Z:3d} A={A:3d} | N/Z={N/Z:.3f}")
+    
+    if ensdf_missing_neutron:
+        print(f"\n" + "-" * 60)
+        print(f"NEUTRON-RICH NUCLIDES MISSING FROM ENSDF ({len(ensdf_missing_neutron)} total):")
+        print(f"-" * 60)
+        # Sort by Z then N for readability
+        missing_sorted = sorted(ensdf_missing_neutron, key=lambda x: (x[1], x[0]))
+        for N, Z in missing_sorted:
+            A = N + Z
+            print(f"  N={N:3d} Z={Z:3d} A={A:3d} | N/Z={N/Z:.3f}")
+    
     print("=" * 60)
     
     # Check known radioactive nuclides (common ones that should be in both datasets)
