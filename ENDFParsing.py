@@ -226,10 +226,12 @@ class ENDFDataModule:
     
     def _is_important_decay_mode(self, mode):
         """
-        Check if a decay mode should be included (NO EC).
+        Check if a decay mode should be included in ENDF data (NO EC in ENDF).
         
-        Includes: A, B-, B+, delayed particles (B-n, B+p, etc.)
-        Excludes: EC, n, p, SF, IT, etc.
+        NOTE: EC is excluded from ENDF only. ENSDF data includes EC decays.
+        
+        Includes in ENDF: A, B-, B+, delayed particles (B-n, B+p, etc.)
+        Excludes from ENDF: EC, n, p, SF, IT, etc.
         """
         if not mode:
             return False

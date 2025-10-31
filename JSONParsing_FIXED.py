@@ -914,10 +914,11 @@ class NuclearDataModule:
                 })
         
         # Handle electron capture decays (EC)
+        # NOTE: EC decays use betasTable (same as B+), but with electronCaptureIntensity field
         elif decay_mode == 'EC':
-            for ec in json_data.get('electronCaptureTable', {}).get('electronCaptures', []):
+            for beta in json_data.get('betasTable', {}).get('betas', []):
                 # Convert final_level to integer
-                final_level = ec.get('finalLevel')
+                final_level = beta.get('finalLevel')
                 if final_level is not None:
                     try:
                         final_level = int(final_level)
@@ -927,25 +928,24 @@ class NuclearDataModule:
                 level_energy = level_lookup.get(final_level, "")
 
                 # Extract parent level from EC decay data
-                parent_level = ec.get('parentLevel')
+                parent_level = beta.get('parentLevel')
                 if parent_level is None:
                     # If parent level is not explicitly given, assume ground state (level 0)
                     parent_level = 0
 
-                # For EC, we might have different energy fields
-                # Safely extract capture energy or binding energy
-                capture_e = ec.get('captureEnergy', {})
+                # Safely extract endpointEnergy (Q-value for EC)
+                endpoint_e = beta.get('endpointEnergy', {})
                 energy_value, energy_unit = None, ''
-                if isinstance(capture_e, dict):
-                    energy_value = capture_e.get('value')
-                    energy_unit = capture_e.get('unit', '')
+                if isinstance(endpoint_e, dict):
+                    energy_value = endpoint_e.get('value')
+                    energy_unit = endpoint_e.get('unit', '')
                 endpoint_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
 
                 # For EC, average energy might not be available or be different
                 avg_str = ""  # EC doesn't typically have average energy like beta decay
 
-                # Safely extract EC intensity
-                ec_i = ec.get('electronCaptureIntensity', {})
+                # Safely extract electronCaptureIntensity (NOT betaIntensity for pure EC)
+                ec_i = beta.get('electronCaptureIntensity', {})
                 ec_value = None
                 if isinstance(ec_i, dict):
                     ec_value = ec_i.get('value')
@@ -1149,12 +1149,7 @@ class NuclearDataModule:
             print("\nApplying EC/β+ decay splitting...")
             self.split_ec_bplus_decays()
             
-            # Remove EC rows from final dataset (keep only for splitting calculation)
-            print("\nRemoving EC decays from final dataset (EC used only for splitting calculation)...")
-            decay_temp = self.decay_df.reset_index()
-            decay_temp = decay_temp[decay_temp['decay_mode'] != 'EC']
-            self.decay_df = decay_temp.set_index(['A', 'Z', 'parentLevel', 'decay_mode', 'final_level'])
-            print(f"Final decay transitions after EC removal: {len(self.decay_df)}")
+            # NOTE: EC rows are now KEPT in the final dataset (not removed)
         
         # Create nuclides DataFrame
         if all_nuclides_rows:
