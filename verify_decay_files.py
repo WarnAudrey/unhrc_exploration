@@ -116,7 +116,7 @@ if __name__ == "__main__":
     parser.add_argument(
         '--ensdf',
         type=str,
-        default="/Users/audreywarn/fluka-db-audrey/src/nuclear_data_ascii/decay_transitions.txt",
+        default="/Users/audreywarn/fluka-db-audrey/src/nuclear_data_output/json_data_modules/ascii/DECAY.ascii",
         help="Path to ENSDF decay data file"
     )
     
