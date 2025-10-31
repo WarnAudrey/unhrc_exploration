@@ -27,6 +27,10 @@ def analyze_json_files(json_dir):
     files_with_betas = 0
     files_without_betas = 0
     
+    # Files with/without alphasTable
+    files_with_alphas = 0
+    files_without_alphas = 0
+    
     # Nuclide coverage by N/Z ratio
     proton_rich = []  # N < Z
     neutron_rich = []  # N > Z
@@ -34,6 +38,7 @@ def analyze_json_files(json_dir):
     
     # Problem files
     empty_betas_table = []
+    empty_alphas_table = []
     missing_decay_mode = []
     
     for filename in os.listdir(json_dir):
@@ -84,6 +89,16 @@ def analyze_json_files(json_dir):
                     files_without_betas += 1
                     empty_betas_table.append((filename, decay_mode, parent_a, parent_z, parent_n))
             
+            # Check for alphasTable
+            alphas_table = data.get('alphasTable', {}).get('alphas', [])
+            
+            if decay_mode == 'A':
+                if alphas_table:
+                    files_with_alphas += 1
+                else:
+                    files_without_alphas += 1
+                    empty_alphas_table.append((filename, decay_mode, parent_a, parent_z, parent_n))
+            
             # Classify by N/Z ratio
             if parent_n < parent_z:
                 proton_rich.append((parent_n, parent_z, decay_mode, filename))
@@ -108,52 +123,87 @@ def analyze_json_files(json_dir):
     print(f"  Files WITH betasTable:    {files_with_betas:4d}")
     print(f"  Files WITHOUT betasTable: {files_without_betas:4d}")
     
+    print("\nALPHAS TABLE ANALYSIS (Alpha decays only):")
+    print(f"  Files WITH alphasTable:    {files_with_alphas:4d}")
+    print(f"  Files WITHOUT alphasTable: {files_without_alphas:4d}")
+    
     print("\nN/Z DISTRIBUTION:")
     print(f"  Proton-rich (N<Z):   {len(proton_rich):4d} files")
     print(f"  N=Z line:            {len(n_equals_z):4d} files")
     print(f"  Neutron-rich (N>Z):  {len(neutron_rich):4d} files")
     
-    print("\nPROBLEM FILES:")
-    print(f"  Empty betasTable: {len(empty_betas_table)}")
+    print("\n" + "=" * 80)
+    print("PROBLEM FILES - BETA DECAYS WITH EMPTY betasTable")
+    print("=" * 80)
+    print(f"Total: {len(empty_betas_table)} files\n")
     if empty_betas_table:
-        print("\n  Sample of files with empty betasTable (first 10):")
-        for filename, mode, A, Z, N in empty_betas_table[:10]:
-            print(f"    {filename[:50]:50s} | {mode:4s} | A={A:3d} Z={Z:3d} N={N:3d} | N/Z={N/Z:.2f}")
+        # Sort by N/Z ratio (descending) to show most neutron-rich first
+        empty_betas_sorted = sorted(empty_betas_table, key=lambda x: x[4]/x[3] if x[3] > 0 else 0, reverse=True)
+        for filename, mode, A, Z, N in empty_betas_sorted:
+            ratio = N/Z if Z > 0 else 0
+            print(f"  {filename[:60]:60s} | {mode:4s} | A={A:3d} Z={Z:3d} N={N:3d} | N/Z={ratio:.3f}")
+    
+    print("\n" + "=" * 80)
+    print("PROBLEM FILES - ALPHA DECAYS WITH EMPTY alphasTable")
+    print("=" * 80)
+    print(f"Total: {len(empty_alphas_table)} files\n")
+    if empty_alphas_table:
+        # Sort by N/Z ratio (ascending) to show most proton-rich first
+        empty_alphas_sorted = sorted(empty_alphas_table, key=lambda x: x[4]/x[3] if x[3] > 0 else 0)
+        for filename, mode, A, Z, N in empty_alphas_sorted:
+            ratio = N/Z if Z > 0 else 0
+            print(f"  {filename[:60]:60s} | {mode:4s} | A={A:3d} Z={Z:3d} N={N:3d} | N/Z={ratio:.3f}")
     
     print(f"\n  Missing decay mode: {len(missing_decay_mode)}")
     
     # Analyze neutron-rich B- decays specifically
     neutron_rich_bminus = [item for item in neutron_rich if item[2] == 'B-']
-    print(f"\nNEUTRON-RICH B- DECAYS: {len(neutron_rich_bminus)} files")
-    
-    # Check how many of these have empty betasTable
     neutron_rich_empty = [item for item in empty_betas_table if item[4] > item[3] and item[1] == 'B-']
-    print(f"  Of these, {len(neutron_rich_empty)} have EMPTY betasTable")
     
-    if neutron_rich_empty:
-        print("\n  Sample neutron-rich B- decays with empty betasTable (first 10):")
-        for filename, mode, A, Z, N in neutron_rich_empty[:10]:
-            print(f"    {filename[:50]:50s} | A={A:3d} Z={Z:3d} N={N:3d} | N/Z={N/Z:.2f}")
+    # Analyze proton-rich alpha decays specifically
+    proton_rich_alpha = [item for item in proton_rich if item[2] == 'A']
+    proton_rich_alpha_empty = [item for item in empty_alphas_table if item[4] < item[3]]
     
     print("\n" + "=" * 80)
-    print("DIAGNOSIS:")
+    print("DIAGNOSIS SUMMARY:")
     print("=" * 80)
     
-    if len(neutron_rich_empty) > 100:
-        print("⚠️  ISSUE FOUND: Many neutron-rich B- decay files have empty betasTable!")
-        print("    These nuclides are probably missing from your ENSDF decay dataset.")
+    print(f"\nNeutron-rich B- decays:      {len(neutron_rich_bminus):4d} total files")
+    print(f"  With EMPTY betasTable:     {len(neutron_rich_empty):4d} files ({100*len(neutron_rich_empty)/len(neutron_rich_bminus):.1f}%)")
+    
+    print(f"\nProton-rich alpha decays:    {len(proton_rich_alpha):4d} total files")
+    print(f"  With EMPTY alphasTable:    {len(proton_rich_alpha_empty):4d} files ({100*len(proton_rich_alpha_empty)/len(proton_rich_alpha):.1f}%)" if proton_rich_alpha else "  (No proton-rich alpha files found)")
+    
+    print("\n" + "-" * 80)
+    
+    if len(neutron_rich_empty) > 50:
+        print("⚠️  BETA DECAY ISSUE FOUND:")
+        print(f"    {len(neutron_rich_empty)} neutron-rich B- decay files have empty betasTable!")
+        print("    These nuclides are missing from your ENSDF decay dataset.")
         print("    The JSON files exist, but contain no detailed transition data.")
         print("\n    SOLUTION: Parser should create at least ONE entry per decay file,")
         print("              even if betasTable is empty (use ground-state to ground-state).")
     else:
-        print("✓ No major issues found with betasTable coverage.")
+        print("✓ No major issues with beta decay coverage.")
+    
+    if len(empty_alphas_table) > 50:
+        print("\n⚠️  ALPHA DECAY ISSUE FOUND:")
+        print(f"    {len(empty_alphas_table)} alpha decay files have empty alphasTable!")
+        print("    These nuclides are missing from your ENSDF decay dataset.")
+        print("\n    SOLUTION: Parser should create at least ONE entry per decay file,")
+        print("              even if alphasTable is empty (use ground-state to ground-state).")
+    else:
+        print("\n✓ No major issues with alpha decay coverage.")
     
     return {
         'total': total_files,
         'empty_betas': len(empty_betas_table),
+        'empty_alphas': len(empty_alphas_table),
         'neutron_rich': len(neutron_rich),
         'neutron_rich_bminus': len(neutron_rich_bminus),
-        'neutron_rich_empty': len(neutron_rich_empty)
+        'neutron_rich_empty': len(neutron_rich_empty),
+        'proton_rich_alpha': len(proton_rich_alpha),
+        'proton_rich_alpha_empty': len(proton_rich_alpha_empty) if proton_rich_alpha else 0
     }
 
 
