@@ -7,9 +7,9 @@ in ENDF vs ENSDF DECAY data files.
 
 Handles both ENDF format (A Z ...) and ENSDF format (index Element-A ...).
 
-NOTE: EC (Electron Capture) decays are:
-  - EXCLUDED from ENDF dataset (per user request)
-  - INCLUDED in ENSDF dataset (parsed from betasTable with electronCaptureIntensity)
+NOTE: EC (Electron Capture) decays are INCLUDED in both ENDF and ENSDF datasets.
+  - ENDF: EC parsed from ENDF-6 format
+  - ENSDF: EC parsed from betasTable with electronCaptureIntensity
 """
 
 import matplotlib
