@@ -654,14 +654,17 @@ class NuclearDataModule:
             decay_mode = 'A'
         elif is_delayed_particle:
             decay_mode = decay_mode_from_file
-            # Handle all types of delayed particle decays: B-n, B-2n, B+p, B-p, B-A, etc.
-            # Skip ECP delayed particle decays entirely
+            # Handle all types of delayed particle decays: B-n, B-2n, B+p, B-p, B-A, ECp, EC2p, etc.
             if not decay_mode:
                 print(f"Warning: No decay mode found in delayed particle file {filename}")
                 return []
-            if 'ECP' in decay_mode or 'EC' in decay_mode:
-                print(f"Skipping ECP delayed particle decay file {filename} with mode: {decay_mode}")
-                return []
+            
+            # Normalize EC decay mode names (ECp, ECP, EC2p, EC2P -> proper format)
+            if decay_mode:
+                # Convert ECP to ECp, EC2P to EC2p, etc.
+                decay_mode = decay_mode.replace('ECP', 'ECp').replace('EC2P', 'EC2p').replace('EC3P', 'EC3p')
+            
+            print(f"Processing delayed particle decay file {filename} with decay mode: {decay_mode}")
                 
             # Extract and store normalization data for delayed particle decays
             normalizations = self.extract_delayed_particle_normalization(json_data, filename)
