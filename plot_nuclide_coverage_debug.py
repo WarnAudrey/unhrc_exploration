@@ -23,6 +23,10 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
     """
     Read unique (N, Z) pairs from a DECAY.ascii file with robust parsing.
     
+    FOCUS: Extracts ONLY the A and Z key values to determine unique nuclides.
+    Ignores parentLevel, decay_mode, final_level - we only care about which
+    nuclides (N, Z) are present in the dataset, not their specific decay channels.
+    
     Handles two formats:
     1. ENDF format: A Z parentLevel decay_mode ...
     2. ENSDF format: index Element-A energy units ...
@@ -32,7 +36,7 @@ def read_nuclides_from_decay_ascii(filepath, debug=False):
         debug: If True, print diagnostic information
         
     Returns:
-        set: Set of (N, Z) tuples representing unique nuclides
+        set: Set of (N, Z) tuples representing unique nuclides (N = A - Z)
     """
     # Element symbol to Z mapping
     ELEMENT_TO_Z = {

@@ -33,6 +33,10 @@ def read_nuclides_from_decay_ascii(filepath):
     """
     Read unique (N, Z) pairs from a DECAY.ascii file.
     
+    FOCUS: Extracts ONLY the A and Z key values to determine unique nuclides.
+    Ignores parentLevel, decay_mode, final_level - we only care about which
+    nuclides (N, Z) are present in the dataset, not their specific decay channels.
+    
     The DECAY.ascii format has:
     - Line 1: Column headers (multi-level)
     - Line 2: Sub-headers
