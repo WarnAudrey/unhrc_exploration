@@ -675,6 +675,7 @@ class NuclearDataModule:
             
             # Check if this beta-decay file actually contains delayed particles
             # Delayed particle modes contain a hyphen followed by a particle (B-n, B-2n, B+p, etc.)
+            # OR EC with particle (ECp, EC2p, etc.)
             is_delayed_in_beta = False
             if decay_mode and '-' in decay_mode:
                 # Check if it's a delayed particle mode (not just B- or B+)
@@ -686,9 +687,21 @@ class NuclearDataModule:
                     normalizations = self.extract_delayed_particle_normalization(json_data, filename)
                     self.normalization_lookup.update(normalizations)
             
+            # Also check for EC delayed particles (ECp, EC2p, etc.) in beta-decay directory
+            if decay_mode and decay_mode.startswith('EC') and any(p in decay_mode for p in ['p', 'n', 'a', 'A', '2p', '3p']):
+                is_delayed_in_beta = True
+                print(f"Found EC delayed particle decay {decay_mode} in beta-decay file {filename}")
+                # Normalize EC decay mode names
+                decay_mode = decay_mode.replace('ECP', 'ECp').replace('EC2P', 'EC2p').replace('EC3P', 'EC3p')
+                
+                # Extract and store normalization data for delayed particle decays
+                normalizations = self.extract_delayed_particle_normalization(json_data, filename)
+                self.normalization_lookup.update(normalizations)
+            
             # If not delayed particle, must be B-, B+, or EC
             if not is_delayed_in_beta:
                 if decay_mode not in ['B-', 'B+', 'EC']:
+                    print(f"Skipping beta-decay file {filename} with unrecognized mode: {decay_mode}")
                     return []
 
         # Build level lookup by index, with safety (make int)
