@@ -827,156 +827,210 @@ class NuclearDataModule:
         
         # Handle alpha decays
         elif is_alpha:
-            for alpha in json_data.get('alphasTable', {}).get('alphas', []):
-                # Convert final_level to integer
-                final_level = alpha.get('finalLevel')
-                if final_level is not None:
-                    try:
-                        final_level = int(final_level)
-                    except (ValueError, TypeError):
-                        final_level = None
-                
-                level_energy = level_lookup.get(final_level, "")
+            alphas_table = json_data.get('alphasTable', {}).get('alphas', [])
+            
+            if alphas_table:
+                # Process detailed alpha transitions from alphasTable
+                for alpha in alphas_table:
+                    # Convert final_level to integer
+                    final_level = alpha.get('finalLevel')
+                    if final_level is not None:
+                        try:
+                            final_level = int(final_level)
+                        except (ValueError, TypeError):
+                            final_level = None
+                    
+                    level_energy = level_lookup.get(final_level, "")
 
-                # Extract parent level from alpha decay data
-                parent_level = alpha.get('parentLevel')
-                if parent_level is None:
-                    # If parent level is not explicitly given, assume ground state (level 0)
-                    parent_level = 0
+                    # Extract parent level from alpha decay data
+                    parent_level = alpha.get('parentLevel')
+                    if parent_level is None:
+                        # If parent level is not explicitly given, assume ground state (level 0)
+                        parent_level = 0
 
-                # Safely extract alpha energy
-                alpha_e = alpha.get('energy', {})
-                energy_value, energy_unit = None, ''
-                if isinstance(alpha_e, dict):
-                    energy_value = alpha_e.get('value')
-                    energy_unit = alpha_e.get('unit', '')
-                energy_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
+                    # Safely extract alpha energy
+                    alpha_e = alpha.get('energy', {})
+                    energy_value, energy_unit = None, ''
+                    if isinstance(alpha_e, dict):
+                        energy_value = alpha_e.get('value')
+                        energy_unit = alpha_e.get('unit', '')
+                    energy_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
 
-                # Alpha decays don't have average energy
-                avg_str = ""
+                    # Alpha decays don't have average energy
+                    avg_str = ""
 
-                # Safely extract alpha intensity
-                alpha_i = alpha.get('intensity', {})
-                alpha_value = None
-                if isinstance(alpha_i, dict):
-                    alpha_value = alpha_i.get('value')
-                # Format intensity in scientific notation
-                intensity_str = self.format_scientific_notation(alpha_value, "%") if alpha_value is not None else ""
+                    # Safely extract alpha intensity
+                    alpha_i = alpha.get('intensity', {})
+                    alpha_value = None
+                    if isinstance(alpha_i, dict):
+                        alpha_value = alpha_i.get('value')
+                    # Format intensity in scientific notation
+                    intensity_str = self.format_scientific_notation(alpha_value, "%") if alpha_value is not None else ""
 
+                    rows.append({
+                        "A": parent_a,
+                        "Z": parent_z,
+                        "parentLevel": parent_level,
+                        "decay_mode": decay_mode,
+                        "final_level": final_level,
+                        "Parent": f"{parent_symbol}-{parent_a}",
+                        "Endpoint energy": energy_str,
+                        "Average energy": avg_str,
+                        "Intensity": intensity_str,
+                    })
+            else:
+                # alphasTable is empty - create default ground-state transition
+                print(f"  WARNING: Empty alphasTable for alpha decay in {filename}, creating default entry")
                 rows.append({
                     "A": parent_a,
                     "Z": parent_z,
-                    "parentLevel": parent_level,
+                    "parentLevel": 0,  # Ground state parent
                     "decay_mode": decay_mode,
-                    "final_level": final_level,
+                    "final_level": 0,  # Ground state daughter
                     "Parent": f"{parent_symbol}-{parent_a}",
-                    "Endpoint energy": energy_str,
-                    "Average energy": avg_str,
-                    "Intensity": intensity_str,
+                    "Endpoint energy": "",
+                    "Average energy": "",
+                    "Intensity": "",  # No intensity data available
                 })
         
         # Handle beta decays (B+ and B-)
         elif decay_mode in ['B-', 'B+']:
-            for beta in json_data.get('betasTable', {}).get('betas', []):
-                # Convert final_level to integer
-                final_level = beta.get('finalLevel')
-                if final_level is not None:
-                    try:
-                        final_level = int(final_level)
-                    except (ValueError, TypeError):
-                        final_level = None
-                
-                level_energy = level_lookup.get(final_level, "")
+            betas_table = json_data.get('betasTable', {}).get('betas', [])
+            
+            if betas_table:
+                # Process detailed beta transitions from betasTable
+                for beta in betas_table:
+                    # Convert final_level to integer
+                    final_level = beta.get('finalLevel')
+                    if final_level is not None:
+                        try:
+                            final_level = int(final_level)
+                        except (ValueError, TypeError):
+                            final_level = None
+                    
+                    level_energy = level_lookup.get(final_level, "")
 
-                # Extract parent level from beta decay data
-                parent_level = beta.get('parentLevel')
-                if parent_level is None:
-                    # If parent level is not explicitly given, assume ground state (level 0)
-                    parent_level = 0
+                    # Extract parent level from beta decay data
+                    parent_level = beta.get('parentLevel')
+                    if parent_level is None:
+                        # If parent level is not explicitly given, assume ground state (level 0)
+                        parent_level = 0
 
-                # Safely extract endpointEnergy
-                endpoint_e = beta.get('endpointEnergy', {})
-                energy_value, energy_unit = None, ''
-                if isinstance(endpoint_e, dict):
-                    energy_value = endpoint_e.get('value')
-                    energy_unit = endpoint_e.get('unit', '')
-                endpoint_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
+                    # Safely extract endpointEnergy
+                    endpoint_e = beta.get('endpointEnergy', {})
+                    energy_value, energy_unit = None, ''
+                    if isinstance(endpoint_e, dict):
+                        energy_value = endpoint_e.get('value')
+                        energy_unit = endpoint_e.get('unit', '')
+                    endpoint_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
 
-                # Safely extract averageEnergy
-                avg_e = beta.get('averageEnergy', {})
-                avg_value, avg_unit = None, ''
-                if isinstance(avg_e, dict):
-                    avg_value = avg_e.get('value')
-                    avg_unit = avg_e.get('unit', '')
-                avg_str = self.format_scientific_notation(avg_value, avg_unit) if avg_value is not None else ""
+                    # Safely extract averageEnergy
+                    avg_e = beta.get('averageEnergy', {})
+                    avg_value, avg_unit = None, ''
+                    if isinstance(avg_e, dict):
+                        avg_value = avg_e.get('value')
+                        avg_unit = avg_e.get('unit', '')
+                    avg_str = self.format_scientific_notation(avg_value, avg_unit) if avg_value is not None else ""
 
-                # Safely extract betaIntensity
-                beta_i = beta.get('betaIntensity', {})
-                beta_value = None
-                if isinstance(beta_i, dict):
-                    beta_value = beta_i.get('value')
-                intensity_str = self.format_scientific_notation(beta_value, "%") if beta_value is not None else ""
+                    # Safely extract betaIntensity
+                    beta_i = beta.get('betaIntensity', {})
+                    beta_value = None
+                    if isinstance(beta_i, dict):
+                        beta_value = beta_i.get('value')
+                    intensity_str = self.format_scientific_notation(beta_value, "%") if beta_value is not None else ""
 
+                    rows.append({
+                        "A": parent_a,
+                        "Z": parent_z,
+                        "parentLevel": parent_level,
+                        "decay_mode": decay_mode,
+                        "final_level": final_level,
+                        "Parent": f"{parent_symbol}-{parent_a}",
+                        "Endpoint energy": endpoint_str,
+                        "Average energy": avg_str,
+                        "Intensity": intensity_str,
+                    })
+            else:
+                # betasTable is empty - create default ground-state transition
+                print(f"  WARNING: Empty betasTable for {decay_mode} decay in {filename}, creating default entry")
                 rows.append({
                     "A": parent_a,
                     "Z": parent_z,
-                    "parentLevel": parent_level,
+                    "parentLevel": 0,  # Ground state parent
                     "decay_mode": decay_mode,
-                    "final_level": final_level,
+                    "final_level": 0,  # Ground state daughter
                     "Parent": f"{parent_symbol}-{parent_a}",
-                    "Endpoint energy": endpoint_str,
-                    "Average energy": avg_str,
-                    "Intensity": intensity_str,
+                    "Endpoint energy": "",
+                    "Average energy": "",
+                    "Intensity": "",  # No intensity data available
                 })
         
         # Handle electron capture decays (EC)
         # NOTE: EC decays use betasTable (same as B+), but with electronCaptureIntensity field
         elif decay_mode == 'EC':
-            for beta in json_data.get('betasTable', {}).get('betas', []):
-                # Convert final_level to integer
-                final_level = beta.get('finalLevel')
-                if final_level is not None:
-                    try:
-                        final_level = int(final_level)
-                    except (ValueError, TypeError):
-                        final_level = None
-                
-                level_energy = level_lookup.get(final_level, "")
+            betas_table = json_data.get('betasTable', {}).get('betas', [])
+            
+            if betas_table:
+                # Process detailed EC transitions from betasTable
+                for beta in betas_table:
+                    # Convert final_level to integer
+                    final_level = beta.get('finalLevel')
+                    if final_level is not None:
+                        try:
+                            final_level = int(final_level)
+                        except (ValueError, TypeError):
+                            final_level = None
+                    
+                    level_energy = level_lookup.get(final_level, "")
 
-                # Extract parent level from EC decay data
-                parent_level = beta.get('parentLevel')
-                if parent_level is None:
-                    # If parent level is not explicitly given, assume ground state (level 0)
-                    parent_level = 0
+                    # Extract parent level from EC decay data
+                    parent_level = beta.get('parentLevel')
+                    if parent_level is None:
+                        # If parent level is not explicitly given, assume ground state (level 0)
+                        parent_level = 0
 
-                # Safely extract endpointEnergy (Q-value for EC)
-                endpoint_e = beta.get('endpointEnergy', {})
-                energy_value, energy_unit = None, ''
-                if isinstance(endpoint_e, dict):
-                    energy_value = endpoint_e.get('value')
-                    energy_unit = endpoint_e.get('unit', '')
-                endpoint_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
+                    # Safely extract endpointEnergy (Q-value for EC)
+                    endpoint_e = beta.get('endpointEnergy', {})
+                    energy_value, energy_unit = None, ''
+                    if isinstance(endpoint_e, dict):
+                        energy_value = endpoint_e.get('value')
+                        energy_unit = endpoint_e.get('unit', '')
+                    endpoint_str = self.format_scientific_notation(energy_value, energy_unit) if energy_value is not None else ""
 
-                # For EC, average energy might not be available or be different
-                avg_str = ""  # EC doesn't typically have average energy like beta decay
+                    # For EC, average energy might not be available or be different
+                    avg_str = ""  # EC doesn't typically have average energy like beta decay
 
-                # Safely extract electronCaptureIntensity (NOT betaIntensity for pure EC)
-                ec_i = beta.get('electronCaptureIntensity', {})
-                ec_value = None
-                if isinstance(ec_i, dict):
-                    ec_value = ec_i.get('value')
-                intensity_str = self.format_scientific_notation(ec_value, "%") if ec_value is not None else ""
+                    # Safely extract electronCaptureIntensity (NOT betaIntensity for pure EC)
+                    ec_i = beta.get('electronCaptureIntensity', {})
+                    ec_value = None
+                    if isinstance(ec_i, dict):
+                        ec_value = ec_i.get('value')
+                    intensity_str = self.format_scientific_notation(ec_value, "%") if ec_value is not None else ""
 
+                    rows.append({
+                        "A": parent_a,
+                        "Z": parent_z,
+                        "parentLevel": parent_level,
+                        "decay_mode": decay_mode,
+                        "final_level": final_level,
+                        "Parent": f"{parent_symbol}-{parent_a}",
+                        "Endpoint energy": endpoint_str,
+                        "Average energy": avg_str,
+                        "Intensity": intensity_str,
+                    })
+            else:
+                # betasTable is empty - create default ground-state transition
+                print(f"  WARNING: Empty betasTable for EC decay in {filename}, creating default entry")
                 rows.append({
                     "A": parent_a,
                     "Z": parent_z,
-                    "parentLevel": parent_level,
+                    "parentLevel": 0,  # Ground state parent
                     "decay_mode": decay_mode,
-                    "final_level": final_level,
+                    "final_level": 0,  # Ground state daughter
                     "Parent": f"{parent_symbol}-{parent_a}",
-                    "Endpoint energy": endpoint_str,
-                    "Average energy": avg_str,
-                    "Intensity": intensity_str,
+                    "Endpoint energy": "",
+                    "Average energy": "",
+                    "Intensity": "",  # No intensity data available
                 })
         
         return rows
