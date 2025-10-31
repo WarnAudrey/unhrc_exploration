@@ -208,15 +208,86 @@ def analyze_json_files(json_dir):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        json_dir = sys.argv[1]
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Diagnose ENSDF JSON coverage issues",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Analyze beta-decay directory
+  python3 diagnose_ensdf_coverage.py /path/to/ensdf/json/ --type beta-decay
+  
+  # Analyze alpha-decay directory
+  python3 diagnose_ensdf_coverage.py /path/to/ensdf/json/ --type alpha-decay
+  
+  # Analyze both (runs twice)
+  python3 diagnose_ensdf_coverage.py /path/to/ensdf/json/ --type both
+  
+  # Or provide full path directly
+  python3 diagnose_ensdf_coverage.py /path/to/ensdf/json/beta-decay/
+        """
+    )
+    
+    parser.add_argument(
+        'base_dir',
+        type=str,
+        nargs='?',
+        default="/Users/audreywarn/fluka-db-audrey/data_input/ensdf/json_070125/",
+        help="Base ENSDF JSON directory (default: /Users/audreywarn/fluka-db-audrey/data_input/ensdf/json_070125/)"
+    )
+    
+    parser.add_argument(
+        '--type',
+        type=str,
+        choices=['beta-decay', 'alpha-decay', 'both'],
+        default='beta-decay',
+        help="Type of decay to analyze (default: beta-decay)"
+    )
+    
+    args = parser.parse_args()
+    
+    base_dir = args.base_dir
+    
+    # Check if user provided a full path to a subdirectory
+    if base_dir.endswith('beta-decay/') or base_dir.endswith('beta-decay'):
+        # Full path provided
+        json_dir = base_dir
+        analyze_json_files(json_dir)
+    elif base_dir.endswith('alpha-decay/') or base_dir.endswith('alpha-decay'):
+        # Full path provided
+        json_dir = base_dir
+        analyze_json_files(json_dir)
     else:
-        # Default path (user should modify)
-        json_dir = "/Users/audreywarn/fluka-db-audrey/data_input/ensdf/json_070125/beta-decay/"
-    
-    if not os.path.exists(json_dir):
-        print(f"Error: Directory not found: {json_dir}")
-        print(f"\nUsage: python3 {sys.argv[0]} <path-to-json-directory>")
-        sys.exit(1)
-    
-    analyze_json_files(json_dir)
+        # Base path provided, append subdirectory based on --type
+        if args.type == 'both':
+            # Analyze both beta and alpha
+            print("\n" + "=" * 80)
+            print("ANALYZING BETA-DECAY DIRECTORY")
+            print("=" * 80 + "\n")
+            beta_dir = os.path.join(base_dir, 'beta-decay')
+            if os.path.exists(beta_dir):
+                analyze_json_files(beta_dir)
+            else:
+                print(f"Warning: Beta-decay directory not found: {beta_dir}")
+            
+            print("\n\n" + "=" * 80)
+            print("ANALYZING ALPHA-DECAY DIRECTORY")
+            print("=" * 80 + "\n")
+            alpha_dir = os.path.join(base_dir, 'alpha-decay')
+            if os.path.exists(alpha_dir):
+                analyze_json_files(alpha_dir)
+            else:
+                print(f"Warning: Alpha-decay directory not found: {alpha_dir}")
+        else:
+            # Single directory
+            json_dir = os.path.join(base_dir, args.type)
+            if not os.path.exists(json_dir):
+                print(f"Error: Directory not found: {json_dir}")
+                print(f"\nAvailable options:")
+                print(f"  --type beta-decay")
+                print(f"  --type alpha-decay")
+                print(f"  --type both")
+                sys.exit(1)
+            
+            analyze_json_files(json_dir)
