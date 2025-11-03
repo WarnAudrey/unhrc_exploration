@@ -174,6 +174,14 @@ def extract_nuclides_and_modes(df):
     print(f"  Unique nuclides: {len(nuclides)}")
     print(f"  Nuclides with decay modes: {sum(1 for n in nuclides if n in decay_data and decay_data[n])}")
     
+    # Debug: Show some examples of nuclides with multiple modes
+    multi_mode_examples = [(n, decay_data[n]) for n in nuclides if len(decay_data.get(n, [])) > 1]
+    if multi_mode_examples:
+        print(f"  Example nuclides with multiple modes (first 3):")
+        for nuclide, modes in multi_mode_examples[:3]:
+            z, a = nuclide
+            print(f"    Z={z}, A={a}: {modes}")
+    
     return nuclides, decay_data
 
 def print_decay_mode_statistics(nuclides, decay_data, label, file_handle):
