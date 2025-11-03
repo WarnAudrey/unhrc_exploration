@@ -12,17 +12,46 @@ def read_decay_data_with_modes(filepath):
     Read decay data from ASCII file and return DataFrame with decay modes.
     """
     try:
-        # Read the file with whitespace delimiter
-        df = pd.read_csv(filepath, delim_whitespace=True)
+        # First try to read with varying columns (no fixed structure)
+        lines = []
+        max_cols = 0
         
-        # If A and Z are in the index, reset it
-        if df.index.nlevels > 1:
-            df = df.reset_index()
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                lines.append(parts)
+                max_cols = max(max_cols, len(parts))
+        
+        if not lines:
+            print(f"No data found in {filepath}")
+            return None
+        
+        # Pad lines to have the same number of columns
+        for i in range(len(lines)):
+            while len(lines[i]) < max_cols:
+                lines[i].append('')
+        
+        # Create DataFrame
+        # Try to determine if first line is header
+        first_line = lines[0]
+        try:
+            # If first line can be converted to numbers, it's data not header
+            [float(x) if x else 0 for x in first_line[:2]]
+            # First line is data, create generic column names
+            df = pd.DataFrame(lines, columns=[f'col_{i}' for i in range(max_cols)])
+        except (ValueError, TypeError):
+            # First line is header
+            df = pd.DataFrame(lines[1:], columns=lines[0])
         
         return df
     
     except Exception as e:
         print(f"Error reading {filepath}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def extract_nuclides_and_modes(df):
@@ -44,9 +73,9 @@ def extract_nuclides_and_modes(df):
     # Look for column names
     for col in cols:
         col_lower = str(col).lower()
-        if 'a' == col_lower or col_lower == 'mass':
+        if 'a' == col_lower or col_lower == 'mass' or col_lower == 'col_0':
             a_col = col
-        elif 'z' == col_lower or col_lower == 'atomic' or col_lower == 'proton':
+        elif 'z' == col_lower or col_lower == 'atomic' or col_lower == 'proton' or col_lower == 'col_1':
             z_col = col
         elif 'mode' in col_lower or 'decay' in col_lower:
             mode_col = col
@@ -60,35 +89,55 @@ def extract_nuclides_and_modes(df):
     # Look for mode column if not found
     if mode_col is None:
         for col in cols[2:]:  # Skip A and Z
-            if df[col].dtype == 'object':  # Decay modes are usually strings
-                mode_col = col
-                break
+            # Check if this column contains string data that looks like decay modes
+            non_empty = df[col][df[col] != ''].head(20)
+            if len(non_empty) > 0:
+                # Check if values look like decay modes (contain letters)
+                sample_val = str(non_empty.iloc[0])
+                if any(c.isalpha() for c in sample_val):
+                    mode_col = col
+                    break
     
     print(f"  Detected columns: A={a_col}, Z={z_col}, Mode={mode_col}")
+    print(f"  Total rows: {len(df)}")
     
     # Extract data
+    parsed_count = 0
     for idx, row in df.iterrows():
         try:
-            a = int(row[a_col])
-            z = int(row[z_col])
+            a_val = str(row[a_col]).strip()
+            z_val = str(row[z_col]).strip()
+            
+            if not a_val or not z_val:
+                continue
+                
+            a = int(float(a_val))
+            z = int(float(z_val))
             nuclide = (z, a)
             nuclides.add(nuclide)
+            parsed_count += 1
             
             # Extract decay mode if available
-            if mode_col is not None and pd.notna(row[mode_col]):
-                mode = str(row[mode_col]).strip()
-                if mode and mode.lower() not in ['nan', 'none', '']:
-                    decay_data[nuclide].append(mode)
+            if mode_col is not None:
+                mode_val = str(row[mode_col]).strip()
+                if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a']:
+                    decay_data[nuclide].append(mode_val)
             
-            # Also check for branching ratio columns and other decay-related columns
-            for col in cols:
-                col_str = str(col).lower()
-                if any(x in col_str for x in ['br', 'branch', 'fraction', 'percent']):
-                    # This might indicate additional decay channel info
-                    pass
+            # Also check all columns for potential decay mode info
+            for col in cols[2:]:  # Skip A and Z
+                col_val = str(row[col]).strip()
+                if col_val and col_val.lower() not in ['nan', 'none', '', 'n/a']:
+                    # Check if it looks like a decay mode (contains letters but not a pure number)
+                    if any(c.isalpha() for c in col_val) and not col_val.replace('.','').replace('-','').isdigit():
+                        if col_val not in decay_data[nuclide]:  # Avoid duplicates
+                            decay_data[nuclide].append(col_val)
                     
         except (ValueError, KeyError, TypeError) as e:
             continue
+    
+    print(f"  Successfully parsed: {parsed_count} rows")
+    print(f"  Unique nuclides: {len(nuclides)}")
+    print(f"  Nuclides with decay modes: {sum(1 for n in nuclides if n in decay_data and decay_data[n])}")
     
     return nuclides, decay_data
 
@@ -100,6 +149,10 @@ def print_decay_mode_statistics(nuclides, decay_data, label, file_handle):
     file_handle.write(f"DECAY MODE STATISTICS: {label}\n")
     file_handle.write(f"{'='*70}\n")
     file_handle.write(f"Total nuclides: {len(nuclides)}\n")
+    
+    if len(nuclides) == 0:
+        file_handle.write("No nuclides in this category.\n")
+        return
     
     # Count nuclides with decay mode information
     nuclides_with_modes = [n for n in nuclides if n in decay_data and decay_data[n]]
@@ -258,8 +311,13 @@ with open(output_path, 'w') as f:
     
     if len(ensdf_nuclides) > 0:
         f.write(f"\nENSDF: {ensdf_with_modes}/{len(ensdf_nuclides)} nuclides have decay mode data ({ensdf_with_modes/len(ensdf_nuclides)*100:.1f}%)\n")
+    else:
+        f.write(f"\nENSDF: No nuclides found\n")
+    
     if len(endf_nuclides) > 0:
         f.write(f"ENDF:  {endf_with_modes}/{len(endf_nuclides)} nuclides have decay mode data ({endf_with_modes/len(endf_nuclides)*100:.1f}%)\n")
+    else:
+        f.write(f"ENDF:  No nuclides found\n")
     
     # For common nuclides, compare decay mode agreement
     if common_nuclides:
