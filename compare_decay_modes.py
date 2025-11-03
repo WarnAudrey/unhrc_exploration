@@ -10,53 +10,71 @@ output_path = '/Users/audreywarn/fluka-db-audrey/outputs/decay_mode_statistics.t
 def read_decay_data_with_modes(filepath):
     """
     Read decay data from ASCII file and return DataFrame with decay modes.
+    The data typically has a MultiIndex with (A, Z, parentLevel, decay_mode, final_level).
     """
     try:
-        # First try to read with varying columns (no fixed structure)
-        lines = []
-        max_cols = 0
+        # Try reading with pandas directly - it might handle the MultiIndex
+        df = pd.read_csv(filepath, sep=r'\s+', header=0)
         
-        with open(filepath, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                parts = line.split()
-                lines.append(parts)
-                max_cols = max(max_cols, len(parts))
-        
-        if not lines:
-            print(f"No data found in {filepath}")
-            return None
-        
-        # Pad lines to have the same number of columns
-        for i in range(len(lines)):
-            while len(lines[i]) < max_cols:
-                lines[i].append('')
-        
-        # Create DataFrame
-        # Try to determine if first line is header
-        first_line = lines[0]
-        try:
-            # If first line can be converted to numbers, it's data not header
-            [float(x) if x else 0 for x in first_line[:2]]
-            # First line is data, create generic column names
-            df = pd.DataFrame(lines, columns=[f'col_{i}' for i in range(max_cols)])
-        except (ValueError, TypeError):
-            # First line is header
-            df = pd.DataFrame(lines[1:], columns=lines[0])
+        # Check if we need to reset the index to access A, Z, decay_mode
+        if df.index.nlevels > 1:
+            # MultiIndex case - reset to get all index levels as columns
+            df = df.reset_index()
         
         return df
     
     except Exception as e:
-        print(f"Error reading {filepath}: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+        print(f"Error with pandas read: {e}")
+        print("Trying alternative parsing...")
+        
+        # Alternative: read line by line
+        try:
+            lines = []
+            max_cols = 0
+            
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    parts = line.split()
+                    lines.append(parts)
+                    max_cols = max(max_cols, len(parts))
+            
+            if not lines:
+                print(f"No data found in {filepath}")
+                return None
+            
+            # Pad lines to have the same number of columns
+            for i in range(len(lines)):
+                while len(lines[i]) < max_cols:
+                    lines[i].append('')
+            
+            # Create DataFrame
+            # Try to determine if first line is header
+            first_line = lines[0]
+            try:
+                # If first line can be converted to numbers, it's data not header
+                [float(x) if x else 0 for x in first_line[:2]]
+                # First line is data, create generic column names
+                df = pd.DataFrame(lines, columns=[f'col_{i}' for i in range(max_cols)])
+            except (ValueError, TypeError):
+                # First line is header
+                df = pd.DataFrame(lines[1:], columns=lines[0])
+            
+            return df
+        
+        except Exception as e2:
+            print(f"Error reading {filepath}: {e2}")
+            import traceback
+            traceback.print_exc()
+            return None
 
 def extract_nuclides_and_modes(df):
     """
     Extract unique nuclides and their decay modes from the dataframe.
+    The dataframe should have columns like A, Z, parentLevel, decay_mode, final_level
+    (from the MultiIndex that was reset).
     Returns:
         - nuclides: set of (Z, A) tuples
         - decay_data: dict mapping (Z, A) to list of decay modes
@@ -64,45 +82,40 @@ def extract_nuclides_and_modes(df):
     nuclides = set()
     decay_data = defaultdict(list)
     
-    # Try to identify A and Z columns
+    # Try to identify A, Z, and decay_mode columns
     cols = df.columns.tolist()
+    print(f"  Available columns: {cols[:10]}...")  # Print first 10 columns
+    
     a_col = None
     z_col = None
     mode_col = None
     
-    # Look for column names
+    # Look for column names (case-insensitive)
     for col in cols:
-        col_lower = str(col).lower()
-        if 'a' == col_lower or col_lower == 'mass' or col_lower == 'col_0':
+        col_str = str(col)
+        col_lower = col_str.lower()
+        
+        if col_lower == 'a' or col_lower == 'mass':
             a_col = col
-        elif 'z' == col_lower or col_lower == 'atomic' or col_lower == 'proton' or col_lower == 'col_1':
+        elif col_lower == 'z' or col_lower == 'atomic' or col_lower == 'proton':
             z_col = col
-        elif 'mode' in col_lower or 'decay' in col_lower:
+        elif 'decay_mode' in col_lower or col_lower == 'decay' or col_lower == 'mode':
             mode_col = col
     
-    # If not found by name, assume first two columns
-    if a_col is None or z_col is None:
-        if len(cols) >= 2:
-            a_col = cols[0]  # Usually A comes first
-            z_col = cols[1]  # Then Z
-    
-    # Look for mode column if not found
-    if mode_col is None:
-        for col in cols[2:]:  # Skip A and Z
-            # Check if this column contains string data that looks like decay modes
-            non_empty = df[col][df[col] != ''].head(20)
-            if len(non_empty) > 0:
-                # Check if values look like decay modes (contain letters)
-                sample_val = str(non_empty.iloc[0])
-                if any(c.isalpha() for c in sample_val):
-                    mode_col = col
-                    break
+    # If not found by name, try positional (A is typically first, Z is second)
+    if a_col is None and len(cols) > 0:
+        a_col = cols[0]
+    if z_col is None and len(cols) > 1:
+        z_col = cols[1]
     
     print(f"  Detected columns: A={a_col}, Z={z_col}, Mode={mode_col}")
     print(f"  Total rows: {len(df)}")
     
+    if mode_col is None:
+        print("  WARNING: No decay_mode column found!")
+        print(f"  All columns: {cols}")
+    
     # Extract data - aggregate by nuclide (Z, A)
-    # Only extract the primary decay mode from each row (typically column 2 or 3)
     parsed_count = 0
     nuclide_modes_sets = defaultdict(set)  # Use set to avoid duplicate modes per nuclide
     
@@ -111,7 +124,7 @@ def extract_nuclides_and_modes(df):
             a_val = str(row[a_col]).strip()
             z_val = str(row[z_col]).strip()
             
-            if not a_val or not z_val:
+            if not a_val or not z_val or a_val == 'nan' or z_val == 'nan':
                 continue
                 
             a = int(float(a_val))
@@ -120,29 +133,12 @@ def extract_nuclides_and_modes(df):
             nuclides.add(nuclide)
             parsed_count += 1
             
-            # Extract only the primary decay mode (usually the 3rd column)
-            # Look for a column that has decay mode strings
+            # Extract decay mode
             if mode_col is not None:
                 mode_val = str(row[mode_col]).strip()
-                if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a', '0', '0.0']:
-                    # Clean the mode value - only keep if it looks like a decay mode
-                    if any(c.isalpha() for c in mode_val) and len(mode_val) < 20:
-                        nuclide_modes_sets[nuclide].add(mode_val)
-            else:
-                # Try to find decay mode in columns after A and Z
-                # Usually it's the 3rd column (index 2)
-                if len(cols) > 2:
-                    for col_idx in [2, 3]:  # Check column 2 and 3
-                        if col_idx < len(cols):
-                            col_val = str(row[cols[col_idx]]).strip()
-                            # Check if this looks like a decay mode
-                            if (col_val and 
-                                col_val.lower() not in ['nan', 'none', '', 'n/a', '0', '0.0'] and
-                                any(c.isalpha() for c in col_val) and 
-                                len(col_val) < 20 and
-                                not col_val.replace('.','').replace('-','').replace('e','').replace('+','').isdigit()):
-                                nuclide_modes_sets[nuclide].add(col_val)
-                                break  # Only take first valid decay mode
+                if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a']:
+                    # Clean the mode value
+                    nuclide_modes_sets[nuclide].add(mode_val)
                     
         except (ValueError, KeyError, TypeError) as e:
             continue
