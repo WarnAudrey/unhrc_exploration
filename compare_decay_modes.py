@@ -138,9 +138,8 @@ def extract_nuclides_and_modes(df):
         print("  WARNING: No decay_mode column found!")
         print(f"  All columns: {cols}")
     
-    # Extract data - aggregate by nuclide (Z, A)
+    # Extract data - collect ALL decay channels (not aggregated by nuclide)
     parsed_count = 0
-    nuclide_modes_sets = defaultdict(set)  # Use set to avoid duplicate modes per nuclide
     
     for idx, row in df.iterrows():
         try:
@@ -156,19 +155,15 @@ def extract_nuclides_and_modes(df):
             nuclides.add(nuclide)
             parsed_count += 1
             
-            # Extract decay mode
+            # Extract decay mode - append to list (not set) to count all occurrences
             if mode_col is not None:
                 mode_val = str(row[mode_col]).strip()
                 if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a']:
                     # Clean the mode value
-                    nuclide_modes_sets[nuclide].add(mode_val)
+                    decay_data[nuclide].append(mode_val)  # Use append, not set.add
                     
         except (ValueError, KeyError, TypeError) as e:
             continue
-    
-    # Convert sets to lists for decay_data
-    for nuclide, modes_set in nuclide_modes_sets.items():
-        decay_data[nuclide] = list(modes_set)
     
     print(f"  Total rows processed: {parsed_count}")
     print(f"  Unique nuclides: {len(nuclides)}")
