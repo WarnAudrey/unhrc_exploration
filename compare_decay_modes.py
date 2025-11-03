@@ -137,9 +137,10 @@ def extract_nuclides_and_modes(df):
         print("  WARNING: No decay_mode column found!")
         print(f"  All columns: {cols}")
     
-    # Extract data - aggregate by nuclide (Z, A), collecting ALL decay channels per nuclide
-    # Each row represents a decay channel (branching), even if same decay mode to different levels
+    # Extract data - aggregate by nuclide (Z, A), collecting unique decay MODE TYPES per nuclide
+    # Use set to get unique mode types (e.g., EC, B+), ignoring branches to different levels
     parsed_count = 0
+    nuclide_modes_sets = defaultdict(set)  # Use set to get unique mode types per nuclide
     
     for idx, row in df.iterrows():
         try:
@@ -155,15 +156,19 @@ def extract_nuclides_and_modes(df):
             nuclides.add(nuclide)
             parsed_count += 1
             
-            # Extract decay mode and add to this nuclide's list (not set)
-            # Each decay channel/branch is counted separately
+            # Extract decay mode type and add to this nuclide's set of unique mode types
             if mode_col is not None:
                 mode_val = str(row[mode_col]).strip()
                 if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a']:
-                    decay_data[nuclide].append(mode_val)  # Append to list, count all branches
+                    nuclide_modes_sets[nuclide].add(mode_val)
                     
         except (ValueError, KeyError, TypeError) as e:
             continue
+    
+    # Convert sets to lists for decay_data
+    # Now each nuclide has a list of unique decay mode types
+    for nuclide, modes_set in nuclide_modes_sets.items():
+        decay_data[nuclide] = list(modes_set)
     
     print(f"  Total rows processed: {parsed_count}")
     print(f"  Unique nuclides: {len(nuclides)}")
