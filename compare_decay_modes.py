@@ -95,12 +95,11 @@ def read_decay_data_with_modes(filepath):
 
 def extract_nuclides_and_modes(df):
     """
-    Extract unique nuclides and their decay modes from the dataframe.
-    The dataframe should have columns like A, Z, parentLevel, decay_mode, final_level
-    (from the MultiIndex that was reset).
+    Extract unique nuclides and ALL their decay channels from the dataframe.
+    Each row represents a separate decay channel.
     Returns:
         - nuclides: set of (Z, A) tuples
-        - decay_data: dict mapping (Z, A) to list of decay modes
+        - decay_data: dict mapping (Z, A) to list of ALL decay modes (one per row/channel)
     """
     nuclides = set()
     decay_data = defaultdict(list)
@@ -138,8 +137,9 @@ def extract_nuclides_and_modes(df):
         print("  WARNING: No decay_mode column found!")
         print(f"  All columns: {cols}")
     
-    # Extract data - collect ALL decay channels (not aggregated by nuclide)
+    # Extract data - collect ALL decay channels (every row = one decay channel)
     parsed_count = 0
+    channel_count = 0
     
     for idx, row in df.iterrows():
         try:
@@ -155,19 +155,21 @@ def extract_nuclides_and_modes(df):
             nuclides.add(nuclide)
             parsed_count += 1
             
-            # Extract decay mode - append to list (not set) to count all occurrences
+            # Extract decay mode for THIS CHANNEL (row)
             if mode_col is not None:
                 mode_val = str(row[mode_col]).strip()
                 if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a']:
-                    # Clean the mode value
-                    decay_data[nuclide].append(mode_val)  # Use append, not set.add
+                    # Append this decay channel to the nuclide's list
+                    decay_data[nuclide].append(mode_val)
+                    channel_count += 1
                     
         except (ValueError, KeyError, TypeError) as e:
             continue
     
     print(f"  Total rows processed: {parsed_count}")
+    print(f"  Total decay channels: {channel_count}")
     print(f"  Unique nuclides: {len(nuclides)}")
-    print(f"  Nuclides with decay modes: {sum(1 for n in nuclides if n in decay_data and decay_data[n])}")
+    print(f"  Nuclides with decay channels: {sum(1 for n in nuclides if n in decay_data and decay_data[n])}")
     
     return nuclides, decay_data
 
