@@ -208,11 +208,11 @@ def print_decay_mode_statistics(nuclides, decay_data, label, file_handle):
     file_handle.write(f"\nTotal decay mode entries: {len(all_modes)}\n")
     file_handle.write(f"Unique decay modes: {len(mode_counts)}\n")
     
-    # Print top decay modes
-    file_handle.write(f"\nTop 20 decay modes:\n")
+    # Print ALL decay modes (sorted by count)
+    file_handle.write(f"\nAll decay modes (sorted by frequency):\n")
     file_handle.write(f"{'Decay Mode':<30} {'Count':>10} {'Percentage':>12}\n")
     file_handle.write("-" * 55 + "\n")
-    for mode, count in mode_counts.most_common(20):
+    for mode, count in mode_counts.most_common():  # Show ALL, not just top 20
         percentage = count / len(all_modes) * 100
         file_handle.write(f"{mode:<30} {count:>10} {percentage:>11.2f}%\n")
     
