@@ -1,11 +1,11 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter, defaultdict
 
 # File paths
 ensdf_path = '/Users/audreywarn/fluka-db-audrey/outputs/ensdf/json_data_modules/ascii/DECAY.ascii'
 endf_path = '/Users/audreywarn/fluka-db-audrey/outputs/endf/endf_data_modules/ascii/DECAY.ascii'
+output_path = '/Users/audreywarn/fluka-db-audrey/outputs/decay_mode_statistics.txt'
 
 def read_decay_data_with_modes(filepath):
     """
@@ -92,21 +92,21 @@ def extract_nuclides_and_modes(df):
     
     return nuclides, decay_data
 
-def print_decay_mode_statistics(nuclides, decay_data, label):
+def print_decay_mode_statistics(nuclides, decay_data, label, file_handle):
     """
-    Print statistics about decay modes for a set of nuclides.
+    Write statistics about decay modes for a set of nuclides to file.
     """
-    print(f"\n{'='*70}")
-    print(f"DECAY MODE STATISTICS: {label}")
-    print(f"{'='*70}")
-    print(f"Total nuclides: {len(nuclides)}")
+    file_handle.write(f"\n{'='*70}\n")
+    file_handle.write(f"DECAY MODE STATISTICS: {label}\n")
+    file_handle.write(f"{'='*70}\n")
+    file_handle.write(f"Total nuclides: {len(nuclides)}\n")
     
     # Count nuclides with decay mode information
     nuclides_with_modes = [n for n in nuclides if n in decay_data and decay_data[n]]
-    print(f"Nuclides with decay mode data: {len(nuclides_with_modes)} ({len(nuclides_with_modes)/len(nuclides)*100:.1f}%)")
+    file_handle.write(f"Nuclides with decay mode data: {len(nuclides_with_modes)} ({len(nuclides_with_modes)/len(nuclides)*100:.1f}%)\n")
     
     if not nuclides_with_modes:
-        print("No decay mode information available for these nuclides.")
+        file_handle.write("No decay mode information available for these nuclides.\n")
         return
     
     # Collect all decay modes
@@ -117,19 +117,19 @@ def print_decay_mode_statistics(nuclides, decay_data, label):
     # Count decay modes
     mode_counts = Counter(all_modes)
     
-    print(f"\nTotal decay mode entries: {len(all_modes)}")
-    print(f"Unique decay modes: {len(mode_counts)}")
+    file_handle.write(f"\nTotal decay mode entries: {len(all_modes)}\n")
+    file_handle.write(f"Unique decay modes: {len(mode_counts)}\n")
     
     # Print top decay modes
-    print(f"\nTop 20 decay modes:")
-    print(f"{'Decay Mode':<30} {'Count':>10} {'Percentage':>12}")
-    print("-" * 55)
+    file_handle.write(f"\nTop 20 decay modes:\n")
+    file_handle.write(f"{'Decay Mode':<30} {'Count':>10} {'Percentage':>12}\n")
+    file_handle.write("-" * 55 + "\n")
     for mode, count in mode_counts.most_common(20):
         percentage = count / len(all_modes) * 100
-        print(f"{mode:<30} {count:>10} {percentage:>11.2f}%")
+        file_handle.write(f"{mode:<30} {count:>10} {percentage:>11.2f}%\n")
     
     # Statistics by decay type categories
-    print(f"\nDecay type categories:")
+    file_handle.write(f"\nDecay type categories:\n")
     categories = {
         'Beta Decay': ['B-', 'B+', 'EC', 'BETA', 'beta'],
         'Alpha Decay': ['A', 'ALPHA', 'alpha'],
@@ -151,32 +151,32 @@ def print_decay_mode_statistics(nuclides, decay_data, label):
         if not categorized:
             category_counts['Other'] += 1
     
-    print(f"{'Category':<25} {'Count':>10} {'Percentage':>12}")
-    print("-" * 50)
+    file_handle.write(f"{'Category':<25} {'Count':>10} {'Percentage':>12}\n")
+    file_handle.write("-" * 50 + "\n")
     for category in sorted(category_counts.keys()):
         count = category_counts[category]
         percentage = count / len(all_modes) * 100
-        print(f"{category:<25} {count:>10} {percentage:>11.2f}%")
+        file_handle.write(f"{category:<25} {count:>10} {percentage:>11.2f}%\n")
     
     # Multi-mode decay statistics
     multi_mode_nuclides = [n for n in nuclides_with_modes if len(decay_data[n]) > 1]
-    print(f"\nNuclides with multiple decay modes: {len(multi_mode_nuclides)} ({len(multi_mode_nuclides)/len(nuclides_with_modes)*100:.1f}%)")
+    file_handle.write(f"\nNuclides with multiple decay modes: {len(multi_mode_nuclides)} ({len(multi_mode_nuclides)/len(nuclides_with_modes)*100:.1f}%)\n")
     
     # Distribution of number of decay modes per nuclide
     modes_per_nuclide = [len(decay_data[n]) for n in nuclides_with_modes]
-    print(f"\nDecay modes per nuclide:")
-    print(f"  Mean: {np.mean(modes_per_nuclide):.2f}")
-    print(f"  Median: {np.median(modes_per_nuclide):.2f}")
-    print(f"  Max: {np.max(modes_per_nuclide)}")
+    file_handle.write(f"\nDecay modes per nuclide:\n")
+    file_handle.write(f"  Mean: {np.mean(modes_per_nuclide):.2f}\n")
+    file_handle.write(f"  Median: {np.median(modes_per_nuclide):.2f}\n")
+    file_handle.write(f"  Max: {np.max(modes_per_nuclide)}\n")
     
     modes_dist = Counter(modes_per_nuclide)
-    print(f"\nDistribution:")
-    print(f"{'# Modes':>10} {'# Nuclides':>12} {'Percentage':>12}")
-    print("-" * 36)
+    file_handle.write(f"\nDistribution:\n")
+    file_handle.write(f"{'# Modes':>10} {'# Nuclides':>12} {'Percentage':>12}\n")
+    file_handle.write("-" * 36 + "\n")
     for n_modes in sorted(modes_dist.keys())[:10]:  # Show up to 10 different values
         count = modes_dist[n_modes]
         percentage = count / len(nuclides_with_modes) * 100
-        print(f"{n_modes:>10} {count:>12} {percentage:>11.2f}%")
+        file_handle.write(f"{n_modes:>10} {count:>12} {percentage:>11.2f}%\n")
 
 
 # Main execution
@@ -213,128 +213,76 @@ print(f"  ENSDF only: {len(ensdf_only)}")
 print(f"  ENDF only: {len(endf_only)}")
 print(f"  Total unique: {len(ensdf_nuclides | endf_nuclides)}")
 
-# Print decay mode statistics for each category
-print("\n[4/4] Analyzing decay modes...\n")
+# Write all statistics to file
+print(f"\n[4/4] Writing statistics to {output_path}...")
 
-if ensdf_only:
-    print_decay_mode_statistics(ensdf_only, ensdf_decay_data, "ENSDF-ONLY NUCLIDES")
-
-if endf_only:
-    print_decay_mode_statistics(endf_only, endf_decay_data, "ENDF-ONLY NUCLIDES")
-
-if common_nuclides:
-    print_decay_mode_statistics(common_nuclides, ensdf_decay_data, "COMMON NUCLIDES (ENSDF data)")
-    print_decay_mode_statistics(common_nuclides, endf_decay_data, "COMMON NUCLIDES (ENDF data)")
-
-# Overall statistics
-print_decay_mode_statistics(ensdf_nuclides, ensdf_decay_data, "ALL ENSDF NUCLIDES")
-print_decay_mode_statistics(endf_nuclides, endf_decay_data, "ALL ENDF NUCLIDES")
-
-# Comparison of decay mode coverage
-print(f"\n{'='*70}")
-print(f"DECAY MODE COVERAGE COMPARISON")
-print(f"{'='*70}")
-
-ensdf_with_modes = sum(1 for n in ensdf_nuclides if n in ensdf_decay_data and ensdf_decay_data[n])
-endf_with_modes = sum(1 for n in endf_nuclides if n in endf_decay_data and endf_decay_data[n])
-
-print(f"\nENSDF: {ensdf_with_modes}/{len(ensdf_nuclides)} nuclides have decay mode data ({ensdf_with_modes/len(ensdf_nuclides)*100:.1f}%)")
-print(f"ENDF:  {endf_with_modes}/{len(endf_nuclides)} nuclides have decay mode data ({endf_with_modes/len(endf_nuclides)*100:.1f}%)")
-
-# For common nuclides, compare decay mode agreement
-if common_nuclides:
-    print(f"\nFor {len(common_nuclides)} common nuclides:")
-    both_have_modes = sum(1 for n in common_nuclides 
-                          if n in ensdf_decay_data and ensdf_decay_data[n] 
-                          and n in endf_decay_data and endf_decay_data[n])
-    only_ensdf_has_modes = sum(1 for n in common_nuclides 
-                               if n in ensdf_decay_data and ensdf_decay_data[n] 
-                               and (n not in endf_decay_data or not endf_decay_data[n]))
-    only_endf_has_modes = sum(1 for n in common_nuclides 
-                              if n in endf_decay_data and endf_decay_data[n] 
-                              and (n not in ensdf_decay_data or not ensdf_decay_data[n]))
-    neither_has_modes = len(common_nuclides) - both_have_modes - only_ensdf_has_modes - only_endf_has_modes
+with open(output_path, 'w') as f:
+    f.write("="*70 + "\n")
+    f.write("NUCLEAR DECAY DATA COMPARISON AND ANALYSIS\n")
+    f.write("="*70 + "\n")
     
-    print(f"  Both sources have mode data: {both_have_modes} ({both_have_modes/len(common_nuclides)*100:.1f}%)")
-    print(f"  Only ENSDF has mode data: {only_ensdf_has_modes} ({only_ensdf_has_modes/len(common_nuclides)*100:.1f}%)")
-    print(f"  Only ENDF has mode data: {only_endf_has_modes} ({only_endf_has_modes/len(common_nuclides)*100:.1f}%)")
-    print(f"  Neither has mode data: {neither_has_modes} ({neither_has_modes/len(common_nuclides)*100:.1f}%)")
-
-print(f"\n{'='*70}")
-print("ANALYSIS COMPLETE")
-print(f"{'='*70}")
-
-# Now create the visualization
-print("\n\nCreating visualization...")
-
-# Convert to arrays for plotting
-def nuclides_to_arrays(nuclides):
-    """Convert set of (Z, A) tuples to Z, N, A arrays"""
-    if not nuclides:
-        return np.array([]), np.array([]), np.array([])
-    z_vals = np.array([z for z, a in nuclides])
-    a_vals = np.array([a for z, a in nuclides])
-    n_vals = a_vals - z_vals
-    return z_vals, n_vals, a_vals
-
-z_common, n_common, a_common = nuclides_to_arrays(common_nuclides)
-z_ensdf, n_ensdf, a_ensdf = nuclides_to_arrays(ensdf_only)
-z_endf, n_endf, a_endf = nuclides_to_arrays(endf_only)
-
-# Create the plot
-fig, ax = plt.subplots(figsize=(14, 10))
-
-# Plot nuclides with different colors and markers
-if len(endf_only) > 0:
-    ax.scatter(n_endf, z_endf, c='#FF6B6B', marker='s', s=30, 
-               label=f'ENDF only (n={len(endf_only)})', alpha=0.8, edgecolors='darkred', linewidths=0.3)
-
-if len(ensdf_only) > 0:
-    ax.scatter(n_ensdf, z_ensdf, c='#4ECDC4', marker='^', s=30, 
-               label=f'ENSDF only (n={len(ensdf_only)})', alpha=0.8, edgecolors='darkblue', linewidths=0.3)
-
-if len(common_nuclides) > 0:
-    ax.scatter(n_common, z_common, c='#95E1D3', marker='o', s=30, 
-               label=f'Common (n={len(common_nuclides)})', alpha=0.9, edgecolors='darkgreen', linewidths=0.3)
-
-# Add labels and title
-ax.set_xlabel('Neutron Number (N = A - Z)', fontsize=14, fontweight='bold')
-ax.set_ylabel('Proton Number (Z)', fontsize=14, fontweight='bold')
-ax.set_title('Comparison of ENDF and ENSDF Nuclear Data Sources', fontsize=16, fontweight='bold', pad=20)
-
-# Grid for better readability
-ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-
-# Legend
-ax.legend(loc='upper left', fontsize=11, framealpha=0.9)
-
-# Set axis limits with some padding
-if len(ensdf_nuclides) + len(endf_nuclides) > 0:
-    all_n = np.concatenate([n_common, n_ensdf, n_endf])
-    all_z = np.concatenate([z_common, z_ensdf, z_endf])
+    f.write(f"\nDATA SOURCES:\n")
+    f.write(f"  ENSDF: {ensdf_path}\n")
+    f.write(f"  ENDF:  {endf_path}\n")
     
-    if len(all_n) > 0 and len(all_z) > 0:
-        n_range = all_n.max() - all_n.min()
-        z_range = all_z.max() - all_z.min()
+    f.write(f"\nNUCLIDE OVERLAP ANALYSIS:\n")
+    f.write(f"  ENSDF nuclides: {len(ensdf_nuclides)}\n")
+    f.write(f"  ENDF nuclides:  {len(endf_nuclides)}\n")
+    f.write(f"  Common nuclides: {len(common_nuclides)}\n")
+    f.write(f"  ENSDF only: {len(ensdf_only)}\n")
+    f.write(f"  ENDF only: {len(endf_only)}\n")
+    f.write(f"  Total unique: {len(ensdf_nuclides | endf_nuclides)}\n")
+    
+    # Print decay mode statistics for each category
+    if ensdf_only:
+        print_decay_mode_statistics(ensdf_only, ensdf_decay_data, "ENSDF-ONLY NUCLIDES", f)
+    
+    if endf_only:
+        print_decay_mode_statistics(endf_only, endf_decay_data, "ENDF-ONLY NUCLIDES", f)
+    
+    if common_nuclides:
+        print_decay_mode_statistics(common_nuclides, ensdf_decay_data, "COMMON NUCLIDES (ENSDF data)", f)
+        print_decay_mode_statistics(common_nuclides, endf_decay_data, "COMMON NUCLIDES (ENDF data)", f)
+    
+    # Overall statistics
+    print_decay_mode_statistics(ensdf_nuclides, ensdf_decay_data, "ALL ENSDF NUCLIDES", f)
+    print_decay_mode_statistics(endf_nuclides, endf_decay_data, "ALL ENDF NUCLIDES", f)
+    
+    # Comparison of decay mode coverage
+    f.write(f"\n{'='*70}\n")
+    f.write(f"DECAY MODE COVERAGE COMPARISON\n")
+    f.write(f"{'='*70}\n")
+    
+    ensdf_with_modes = sum(1 for n in ensdf_nuclides if n in ensdf_decay_data and ensdf_decay_data[n])
+    endf_with_modes = sum(1 for n in endf_nuclides if n in endf_decay_data and endf_decay_data[n])
+    
+    if len(ensdf_nuclides) > 0:
+        f.write(f"\nENSDF: {ensdf_with_modes}/{len(ensdf_nuclides)} nuclides have decay mode data ({ensdf_with_modes/len(ensdf_nuclides)*100:.1f}%)\n")
+    if len(endf_nuclides) > 0:
+        f.write(f"ENDF:  {endf_with_modes}/{len(endf_nuclides)} nuclides have decay mode data ({endf_with_modes/len(endf_nuclides)*100:.1f}%)\n")
+    
+    # For common nuclides, compare decay mode agreement
+    if common_nuclides:
+        f.write(f"\nFor {len(common_nuclides)} common nuclides:\n")
+        both_have_modes = sum(1 for n in common_nuclides 
+                              if n in ensdf_decay_data and ensdf_decay_data[n] 
+                              and n in endf_decay_data and endf_decay_data[n])
+        only_ensdf_has_modes = sum(1 for n in common_nuclides 
+                                   if n in ensdf_decay_data and ensdf_decay_data[n] 
+                                   and (n not in endf_decay_data or not endf_decay_data[n]))
+        only_endf_has_modes = sum(1 for n in common_nuclides 
+                                  if n in endf_decay_data and endf_decay_data[n] 
+                                  and (n not in ensdf_decay_data or not ensdf_decay_data[n]))
+        neither_has_modes = len(common_nuclides) - both_have_modes - only_ensdf_has_modes - only_endf_has_modes
         
-        ax.set_xlim(all_n.min() - 0.05*n_range, all_n.max() + 0.05*n_range)
-        ax.set_ylim(all_z.min() - 0.05*z_range, all_z.max() + 0.05*z_range)
+        f.write(f"  Both sources have mode data: {both_have_modes} ({both_have_modes/len(common_nuclides)*100:.1f}%)\n")
+        f.write(f"  Only ENSDF has mode data: {only_ensdf_has_modes} ({only_ensdf_has_modes/len(common_nuclides)*100:.1f}%)\n")
+        f.write(f"  Only ENDF has mode data: {only_endf_has_modes} ({only_endf_has_modes/len(common_nuclides)*100:.1f}%)\n")
+        f.write(f"  Neither has mode data: {neither_has_modes} ({neither_has_modes/len(common_nuclides)*100:.1f}%)\n")
+    
+    f.write(f"\n{'='*70}\n")
+    f.write("ANALYSIS COMPLETE\n")
+    f.write(f"{'='*70}\n")
 
-# Add some statistics as text
-stats_text = f"Total unique nuclides: {len(ensdf_nuclides | endf_nuclides)}\n"
-if len(ensdf_nuclides | endf_nuclides) > 0:
-    stats_text += f"Coverage overlap: {len(common_nuclides)/(len(ensdf_nuclides | endf_nuclides))*100:.1f}%"
-ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, 
-        fontsize=10, verticalalignment='top', horizontalalignment='right',
-        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray', linewidth=1))
-
-plt.tight_layout()
-
-# Save the figure
-output_path = '/Users/audreywarn/fluka-db-audrey/outputs/nuclear_data_comparison.png'
-plt.savefig(output_path, dpi=300, bbox_inches='tight')
-print(f"\nPlot saved to: {output_path}")
-
-plt.show()
-
+print(f"\nStatistics written to: {output_path}")
 print("\nScript completed successfully!")
