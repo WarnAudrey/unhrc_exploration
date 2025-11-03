@@ -101,8 +101,10 @@ def extract_nuclides_and_modes(df):
     print(f"  Detected columns: A={a_col}, Z={z_col}, Mode={mode_col}")
     print(f"  Total rows: {len(df)}")
     
-    # Extract data
+    # Extract data - aggregate by nuclide (Z, A)
     parsed_count = 0
+    nuclide_modes_sets = defaultdict(set)  # Use set to avoid duplicate modes per nuclide
+    
     for idx, row in df.iterrows():
         try:
             a_val = str(row[a_col]).strip()
@@ -121,7 +123,7 @@ def extract_nuclides_and_modes(df):
             if mode_col is not None:
                 mode_val = str(row[mode_col]).strip()
                 if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a']:
-                    decay_data[nuclide].append(mode_val)
+                    nuclide_modes_sets[nuclide].add(mode_val)
             
             # Also check all columns for potential decay mode info
             for col in cols[2:]:  # Skip A and Z
@@ -129,13 +131,16 @@ def extract_nuclides_and_modes(df):
                 if col_val and col_val.lower() not in ['nan', 'none', '', 'n/a']:
                     # Check if it looks like a decay mode (contains letters but not a pure number)
                     if any(c.isalpha() for c in col_val) and not col_val.replace('.','').replace('-','').isdigit():
-                        if col_val not in decay_data[nuclide]:  # Avoid duplicates
-                            decay_data[nuclide].append(col_val)
+                        nuclide_modes_sets[nuclide].add(col_val)
                     
         except (ValueError, KeyError, TypeError) as e:
             continue
     
-    print(f"  Successfully parsed: {parsed_count} rows")
+    # Convert sets to lists for decay_data
+    for nuclide, modes_set in nuclide_modes_sets.items():
+        decay_data[nuclide] = list(modes_set)
+    
+    print(f"  Total rows processed: {parsed_count}")
     print(f"  Unique nuclides: {len(nuclides)}")
     print(f"  Nuclides with decay modes: {sum(1 for n in nuclides if n in decay_data and decay_data[n])}")
     
