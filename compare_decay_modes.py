@@ -27,10 +27,9 @@ def read_decay_data_with_modes(filepath):
         print(f"Error with pandas read: {e}")
         print("Trying alternative parsing...")
         
-        # Alternative: read line by line
+        # Alternative: read line by line and parse the MultiIndex structure
         try:
             lines = []
-            max_cols = 0
             
             with open(filepath, 'r') as f:
                 for line in f:
@@ -39,28 +38,52 @@ def read_decay_data_with_modes(filepath):
                         continue
                     parts = line.split()
                     lines.append(parts)
-                    max_cols = max(max_cols, len(parts))
             
             if not lines:
                 print(f"No data found in {filepath}")
                 return None
             
-            # Pad lines to have the same number of columns
-            for i in range(len(lines)):
-                while len(lines[i]) < max_cols:
-                    lines[i].append('')
+            # First line should be the header
+            # It looks like: "Parent Endpoint_energy Average_energy Intensity" (or similar)
+            # But we need to extract the MultiIndex columns from the data
+            
+            # Check if first line is a header (contains non-numeric values)
+            first_line = lines[0]
+            is_header = False
+            try:
+                float(first_line[0])
+            except (ValueError, TypeError):
+                is_header = True
+            
+            # Skip header if present
+            data_start = 1 if is_header else 0
+            
+            # Parse data rows
+            # Expected format: A Z parentLevel decay_mode final_level [data columns...]
+            # The first 5 columns form the MultiIndex
+            data_rows = []
+            for line in lines[data_start:]:
+                if len(line) >= 5:
+                    # Extract A, Z, parentLevel, decay_mode, final_level
+                    a = line[0]
+                    z = line[1]
+                    parent_level = line[2]
+                    decay_mode = line[3]
+                    final_level = line[4]
+                    # Rest are data columns
+                    data_cols = line[5:] if len(line) > 5 else []
+                    
+                    data_rows.append({
+                        'A': a,
+                        'Z': z,
+                        'parentLevel': parent_level,
+                        'decay_mode': decay_mode,
+                        'final_level': final_level,
+                        'data': data_cols
+                    })
             
             # Create DataFrame
-            # Try to determine if first line is header
-            first_line = lines[0]
-            try:
-                # If first line can be converted to numbers, it's data not header
-                [float(x) if x else 0 for x in first_line[:2]]
-                # First line is data, create generic column names
-                df = pd.DataFrame(lines, columns=[f'col_{i}' for i in range(max_cols)])
-            except (ValueError, TypeError):
-                # First line is header
-                df = pd.DataFrame(lines[1:], columns=lines[0])
+            df = pd.DataFrame(data_rows)
             
             return df
         
