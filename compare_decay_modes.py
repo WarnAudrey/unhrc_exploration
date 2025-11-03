@@ -102,6 +102,7 @@ def extract_nuclides_and_modes(df):
     print(f"  Total rows: {len(df)}")
     
     # Extract data - aggregate by nuclide (Z, A)
+    # Only extract the primary decay mode from each row (typically column 2 or 3)
     parsed_count = 0
     nuclide_modes_sets = defaultdict(set)  # Use set to avoid duplicate modes per nuclide
     
@@ -119,19 +120,29 @@ def extract_nuclides_and_modes(df):
             nuclides.add(nuclide)
             parsed_count += 1
             
-            # Extract decay mode if available
+            # Extract only the primary decay mode (usually the 3rd column)
+            # Look for a column that has decay mode strings
             if mode_col is not None:
                 mode_val = str(row[mode_col]).strip()
-                if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a']:
-                    nuclide_modes_sets[nuclide].add(mode_val)
-            
-            # Also check all columns for potential decay mode info
-            for col in cols[2:]:  # Skip A and Z
-                col_val = str(row[col]).strip()
-                if col_val and col_val.lower() not in ['nan', 'none', '', 'n/a']:
-                    # Check if it looks like a decay mode (contains letters but not a pure number)
-                    if any(c.isalpha() for c in col_val) and not col_val.replace('.','').replace('-','').isdigit():
-                        nuclide_modes_sets[nuclide].add(col_val)
+                if mode_val and mode_val.lower() not in ['nan', 'none', '', 'n/a', '0', '0.0']:
+                    # Clean the mode value - only keep if it looks like a decay mode
+                    if any(c.isalpha() for c in mode_val) and len(mode_val) < 20:
+                        nuclide_modes_sets[nuclide].add(mode_val)
+            else:
+                # Try to find decay mode in columns after A and Z
+                # Usually it's the 3rd column (index 2)
+                if len(cols) > 2:
+                    for col_idx in [2, 3]:  # Check column 2 and 3
+                        if col_idx < len(cols):
+                            col_val = str(row[cols[col_idx]]).strip()
+                            # Check if this looks like a decay mode
+                            if (col_val and 
+                                col_val.lower() not in ['nan', 'none', '', 'n/a', '0', '0.0'] and
+                                any(c.isalpha() for c in col_val) and 
+                                len(col_val) < 20 and
+                                not col_val.replace('.','').replace('-','').replace('e','').replace('+','').isdigit()):
+                                nuclide_modes_sets[nuclide].add(col_val)
+                                break  # Only take first valid decay mode
                     
         except (ValueError, KeyError, TypeError) as e:
             continue
