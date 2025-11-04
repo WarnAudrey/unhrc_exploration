@@ -189,13 +189,23 @@ class ENDFDataModule:
                 # Scan for all decay sections
                 section_positions = []
                 for i, line in enumerate(lines):
-                    if len(line) >= 75:
+                    # Pad line to 80 characters if needed (ENDF standard)
+                    line_padded = f"{line:<80}" if len(line) < 80 else line
+                    
+                    if len(line_padded) >= 75:
                         try:
-                            mat = int(line[66:70].strip() or 0)
-                            mf = int(line[70:72].strip() or 0)
-                            mt = int(line[72:75].strip() or 0)
-                            seq = int(line[75:80].strip() or 0)
+                            # ENDF-6 format: columns are 1-based in documentation, 0-based in Python
+                            # Columns 67-70: MAT (4 chars, right-justified)
+                            # Columns 71-72: MF (2 chars, right-justified)  
+                            # Columns 73-75: MT (3 chars, right-justified)
+                            # Columns 76-80: Sequence (5 chars, right-justified)
+                            mat = int(line_padded[66:70].strip() or 0)
+                            mf = int(line_padded[70:72].strip() or 0)
+                            mt = int(line_padded[72:75].strip() or 0)
+                            seq_str = line_padded[75:80].strip()
+                            seq = int(seq_str) if seq_str else 0
                             
+                            # Look for MF=8 MT=457 HEAD record (sequence 1)
                             if mf == 8 and mt == 457 and seq == 1:
                                 section_positions.append((i, mat))
                         except:
