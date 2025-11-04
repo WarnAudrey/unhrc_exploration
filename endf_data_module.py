@@ -188,6 +188,9 @@ class ENDFDataModule:
                 
                 # Scan for all decay sections
                 section_positions = []
+                seen_sections = set()  # Track (MAT, MF, MT) to avoid duplicates
+                prev_mf, prev_mt = None, None
+                
                 for i, line in enumerate(lines):
                     # Pad line to 80 characters if needed (ENDF standard)
                     line_padded = f"{line:<80}" if len(line) < 80 else line
@@ -202,12 +205,15 @@ class ENDFDataModule:
                             mat = int(line_padded[66:70].strip() or 0)
                             mf = int(line_padded[70:72].strip() or 0)
                             mt = int(line_padded[72:75].strip() or 0)
-                            seq_str = line_padded[75:80].strip()
-                            seq = int(seq_str) if seq_str else 0
                             
-                            # Look for MF=8 MT=457 HEAD record (sequence 1)
-                            if mf == 8 and mt == 457 and seq == 1:
-                                section_positions.append((i, mat))
+                            # Detect start of MF=8 MT=457 section (when MF/MT changes to 8/457)
+                            if mf == 8 and mt == 457 and (prev_mf != 8 or prev_mt != 457):
+                                section_key = (mat, mf, mt)
+                                if section_key not in seen_sections:
+                                    section_positions.append((i, mat))
+                                    seen_sections.add(section_key)
+                            
+                            prev_mf, prev_mt = mf, mt
                         except:
                             continue
                 
