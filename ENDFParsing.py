@@ -92,15 +92,28 @@ class DecayData:
                     avg_e = float(avg_e)
                     
                     # Map STYP to mode string
-                    if styp == 2:  # Beta+
+                    if styp == 1:  # Beta-
+                        for mode_str in self.decay_modes:
+                            if mode_str.startswith('B-') or mode_str.startswith('β-'):
+                                self.average_energies[mode_str] = avg_e
+                    elif styp == 2:  # Beta+
                         for mode_str in self.decay_modes:
                             if mode_str.startswith('B+') or mode_str.startswith('EC/B+'):
                                 self.average_energies[mode_str] = avg_e
                     elif styp == 0:  # Gamma
                         self.average_energies['gamma'] = avg_e
                 
-                # Get endpoint energies from discrete transitions (for beta+)
-                if styp == 2 and "discrete" in spec and spec["discrete"]:
+                # Get endpoint energies from discrete transitions (for beta- and beta+)
+                if styp == 1 and "discrete" in spec and spec["discrete"]:
+                    for disc in spec["discrete"]:
+                        if "ER" in disc:
+                            endpoint = disc["ER"][0] if isinstance(disc["ER"], tuple) else disc["ER"]
+                            endpoint = float(endpoint)
+                            for mode_str in self.decay_modes:
+                                if mode_str.startswith('B-') or mode_str.startswith('β-'):
+                                    self.endpoint_energies[mode_str] = endpoint
+                                    break
+                elif styp == 2 and "discrete" in spec and spec["discrete"]:
                     for disc in spec["discrete"]:
                         if "ER" in disc:
                             endpoint = disc["ER"][0] if isinstance(disc["ER"], tuple) else disc["ER"]

@@ -66,12 +66,13 @@ According to ENDF-102 Section 8.1, each MF=8 MT=457 section contains:
    - Continuous spectrum (TAB1 if present)
    - Covariance data (if available)
    
-   Common spectrum types (STYP):
-     0 = Gamma rays
-     2 = Beta+ particles
-     4 = Alpha particles
-     8 = X-rays
-     9 = Auger electrons
+    Common spectrum types (STYP):
+      0 = Gamma rays
+      1 = Beta- particles (electrons)
+      2 = Beta+ particles (positrons)
+      4 = Alpha particles
+      8 = X-rays
+      9 = Auger electrons
 
 ISOMERIC STATES
 ---------------
@@ -172,6 +173,7 @@ ALL fields specified in ENDF-102 Section 8 are captured:
 - Mode data: RTYP, RFS, Q, dQ, BR, dBR (6/6 per mode)
 - Spectrum summary: STYP, LCON, LCOV, NER, FD, ER_AV, FC (all fields)
 - Gamma discrete: ER, RTYP, TYPE, RI, RIS, RICC, RICK, RICL, RICM + higher shells
+- Beta- discrete: ER, RTYP, TYPE, E_AVG, IB + additional parameters
 - Beta+ discrete: ER, RTYP, TYPE, E_AVG, IB + additional parameters
 - Alpha discrete: ER, RTYP, TYPE, RI, HF + additional parameters
 - X-ray discrete: ER, RTYP, TYPE, RI + additional parameters
@@ -422,6 +424,7 @@ class ENDFNumericDecayParser:
     - Daughter excitation states
     - Radiation spectra for all particle types:
       * Gamma rays (STYP=0)
+      * Beta- particles (STYP=1)
       * Beta+ particles (STYP=2)
       * Alpha particles (STYP=4)
       * X-rays (STYP=8)
@@ -522,6 +525,7 @@ class ENDFNumericDecayParser:
     Spectrum Type Codes (STYP):
     ----------------------------
     0 = Gamma rays
+    1 = Beta- particles (electrons)
     2 = Beta+ particles (positrons)
     4 = Alpha particles
     8 = X-rays (characteristic atomic radiation)
@@ -1250,8 +1254,13 @@ class ENDFNumericDecayParser:
             - RICM, dRICM - M-shell ICC
             - Additional shells (N, O, P, ...) if present
           
+          For Beta- (STYP=1):
+            - E_AVG, dE_AVG - Average energy (eV)
+            - IB, dIB       - Intensity (β-/100 decays)
+            - Additional parameters (shape factors, etc.)
+          
           For Beta+ (STYP=2):
-            - E_AVG, dE_AVG - Average energy (keV)
+            - E_AVG, dE_AVG - Average energy (eV)
             - IB, dIB       - Intensity (β+/100 decays)
             - Additional parameters (shape factors, etc.)
           
@@ -1413,6 +1422,11 @@ class ENDFNumericDecayParser:
                 #   RICM = M-shell ICC
                 #   Additional shells (N, O, P) may follow
                 #
+                # STYP=1 (Beta-): [RTYP, TYPE, E_avg, dE_avg, IB, dIB, ...]
+                #   E_avg = Average beta- energy (mean of spectrum)
+                #   IB    = Beta- intensity (electrons/100 decays)
+                #   Additional parameters may include shape factors
+                #
                 # STYP=2 (Beta+): [RTYP, TYPE, E_avg, dE_avg, IB, dIB, ...]
                 #   E_avg = Average beta+ energy (mean of spectrum)
                 #   IB    = Beta+ intensity (positrons/100 decays)
@@ -1476,6 +1490,25 @@ class ENDFNumericDecayParser:
                                 # Additional shells (N, O, P, ...) if present
                                 if len(values_d) > 14:
                                     discrete["additional_shell_ICC"] = values_d[14:].tolist()
+                            
+                            # ========================================
+                            # BETA- SPECTRUM (STYP=1): ENDF-102 Section 8.1.4.2
+                            # ========================================
+                            # Values: [RTYP, TYPE, E_avg, dE_avg, IB, dIB]
+                            # Note: ER (endpoint energy) is in CONT fields (items_d[0:2])
+                            elif styp == 1:  
+                                if len(values_d) >= 4:
+                                    # E_avg: Average beta- energy (energy deposited, not endpoint)
+                                    # This is the mean energy of the beta- spectrum
+                                    discrete["E_AVG"] = tuple(values_d[2:4].astype(float))
+                                if len(values_d) >= 6:
+                                    # IB: Beta- emission intensity (electrons per 100 decays of parent)
+                                    # Also called INTENSITY in original code
+                                    discrete["IB"] = tuple(values_d[4:6].astype(float))
+                                    discrete["INTENSITY"] = discrete["IB"]  # Alias for compatibility
+                                # Shape factor or additional parameters if present
+                                if len(values_d) > 6:
+                                    discrete["additional_beta_params"] = values_d[6:].tolist()
                             
                             # ========================================
                             # BETA+ SPECTRUM (STYP=2): ENDF-102 Section 8.1.4.2
