@@ -100,10 +100,14 @@ class DecayData:
                         for mode_str in self.decay_modes:
                             if mode_str.startswith('B+') or mode_str.startswith('EC/B+'):
                                 self.average_energies[mode_str] = avg_e
+                    elif styp == 4:  # Alpha
+                        for mode_str in self.decay_modes:
+                            if mode_str.startswith('a') or mode_str.startswith('α'):
+                                self.average_energies[mode_str] = avg_e
                     elif styp == 0:  # Gamma
                         self.average_energies['gamma'] = avg_e
                 
-                # Get endpoint energies from discrete transitions (for beta- and beta+)
+                # Get endpoint energies from discrete transitions (for beta-, beta+, and alpha)
                 if styp == 1 and "discrete" in spec and spec["discrete"]:
                     for disc in spec["discrete"]:
                         if "ER" in disc:
@@ -121,6 +125,21 @@ class DecayData:
                             for mode_str in self.decay_modes:
                                 if mode_str.startswith('B+') or mode_str.startswith('EC/B+'):
                                     self.endpoint_energies[mode_str] = endpoint
+                                    break
+                elif styp == 4 and "discrete" in spec and spec["discrete"]:
+                    # Alpha discrete transitions
+                    # For alpha, only set endpoint if not already set from ER_AV
+                    for disc in spec["discrete"]:
+                        if "ER" in disc:
+                            alpha_energy = disc["ER"][0] if isinstance(disc["ER"], tuple) else disc["ER"]
+                            alpha_energy = float(alpha_energy)
+                            for mode_str in self.decay_modes:
+                                if mode_str.startswith('a') or mode_str.startswith('α'):
+                                    # Only set if not already set by ER_AV (mean energy is preferred)
+                                    if mode_str not in self.average_energies:
+                                        self.average_energies[mode_str] = alpha_energy
+                                    if mode_str not in self.endpoint_energies:
+                                        self.endpoint_energies[mode_str] = alpha_energy
                                     break
     
     def _decode_rtyp(self, rtyp):
