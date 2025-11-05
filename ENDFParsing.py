@@ -173,25 +173,31 @@ class ENDFDataModule:
     
     def load_from_endf_files(self, endf_dir: str, file_pattern: str = "*.endf"):
         """
-        Load all ENDF files from a directory using ENDFNumericDecayParser.
+        Load ENDF files from a directory or a single file.
         
         Args:
-            endf_dir: Path to directory containing ENDF-6 files
-            file_pattern: Glob pattern for ENDF files (default: "*.endf")
+            endf_dir: Path to directory containing ENDF-6 files OR path to a single ENDF file
+            file_pattern: Glob pattern for ENDF files (default: "*.endf") - ignored if endf_dir is a file
         """
         endf_path = Path(endf_dir)
         
         if not endf_path.exists():
-            raise FileNotFoundError(f"ENDF directory not found: {endf_dir}")
+            raise FileNotFoundError(f"ENDF path not found: {endf_dir}")
         
-        # Find all ENDF files matching the pattern
-        endf_files = sorted(list(endf_path.glob(file_pattern)))
-        endf_files = [f for f in endf_files if f.is_file()]
-        
-        if not endf_files:
-            raise ValueError(f"No ENDF files found in {endf_dir} matching pattern '{file_pattern}'")
-        
-        print(f"\nFound {len(endf_files)} ENDF files in {endf_dir}")
+        # Check if path is a file or directory
+        if endf_path.is_file():
+            # Single file mode
+            endf_files = [endf_path]
+            print(f"\nProcessing single ENDF file: {endf_path.name}")
+        else:
+            # Directory mode - find all ENDF files matching the pattern
+            endf_files = sorted(list(endf_path.glob(file_pattern)))
+            endf_files = [f for f in endf_files if f.is_file()]
+            
+            if not endf_files:
+                raise ValueError(f"No ENDF files found in {endf_dir} matching pattern '{file_pattern}'")
+            
+            print(f"\nFound {len(endf_files)} ENDF files in {endf_dir}")
         
         for file_path in endf_files:
             try:
@@ -533,8 +539,8 @@ def parse_endf_files(endf_dir: str, file_pattern: str = "*.endf") -> ENDFDataMod
     Parse ENDF files and return an ENDFDataModule.
     
     Args:
-        endf_dir: Path to directory containing ENDF-6 files
-        file_pattern: Glob pattern for ENDF files (default: "*.endf")
+        endf_dir: Path to directory containing ENDF-6 files OR path to a single ENDF file
+        file_pattern: Glob pattern for ENDF files (default: "*.endf") - ignored if endf_dir is a file
         
     Returns:
         ENDFDataModule with loaded and parsed data
@@ -552,15 +558,19 @@ if __name__ == "__main__":
     parser.add_argument("endf_dir", 
                        nargs='?',
                        default="/Users/audreywarn/fluka-db-audrey/data_input/endf/ENDF-B-VIII.0_decay",
-                       help="Directory containing ENDF files (default: ENDF-B-VIII.0_decay)")
+                       help="Directory containing ENDF files OR single ENDF file (default: ENDF-B-VIII.0_decay)")
     parser.add_argument("--output", "-o", help="Output directory for CSV files")
-    parser.add_argument("--pattern", "-p", default="*.endf", help="File pattern (default: *.endf)")
+    parser.add_argument("--pattern", "-p", default="*.endf", help="File pattern (default: *.endf) - ignored if endf_dir is a file")
     
     args = parser.parse_args()
     
     # Parse ENDF files
-    print(f"Parsing ENDF files from: {args.endf_dir}")
-    print(f"File pattern: {args.pattern}")
+    endf_path = Path(args.endf_dir)
+    if endf_path.is_file():
+        print(f"Parsing single ENDF file: {args.endf_dir}")
+    else:
+        print(f"Parsing ENDF files from directory: {args.endf_dir}")
+        print(f"File pattern: {args.pattern}")
     
     endf_module = parse_endf_files(args.endf_dir, file_pattern=args.pattern)
     endf_module.display_summary()
