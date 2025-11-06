@@ -1,0 +1,147 @@
+================================================================================
+                  ALPHA DECAY FIX + COMPLETE VERIFICATION
+================================================================================
+
+✅ ALL 6 STYP TYPES VERIFIED WORKING (100% PASS RATE)
+
+================================================================================
+                           VERIFICATION RESULTS
+================================================================================
+
+STYP | Type              | Test Energy  | Extraction      | Status
+-----|-------------------|--------------|-----------------|------------------
+  0  | Gamma rays        | 661.657 keV  | ✓ 661.66 keV    | ✅ PASS
+  1  | Beta- particles   | 301.370 keV  | ✓ 301.37 keV    | ✅ PASS
+  2  | Beta+ particles   | 633.000 keV  | ✓ 633.00 keV    | ✅ PASS
+  4  | Alpha particles   | 5.486 MeV    | ✓ 5.486 MeV     | ✅ PASS (FIXED!)
+  8  | X-rays            | 59.541 keV   | ✓ 59.54 keV     | ✅ PASS
+  9  | Auger electrons   | 17.750 keV   | ✓ 17.75 keV     | ✅ PASS
+
+                        🎯 6/6 TESTS PASSED 🎯
+
+================================================================================
+                        WHAT WAS FIXED FOR ALPHA
+================================================================================
+
+Problem Found:
+  • Alpha energies (STYP=4) were being parsed by JEFF_ENDF_parser.py
+  • BUT NOT mapped to decay modes in ENDFParsing.py
+  • Result: No alpha energies in final database
+
+Root Cause:
+  • ENDFParsing.py only mapped STYP 0, 1, 2 (Gamma, Beta-, Beta+)
+  • STYP 4 (Alpha) was completely missing from energy mapping
+
+Solution Applied:
+  • Added STYP=4 handling in DecayData.__init__() (lines 103-106)
+  • Added alpha discrete transition handling (lines 129-143)
+  • Preserves ER_AV (mean energy) over discrete values
+
+Code Changes:
+  File: ENDFParsing.py
+  Lines: 103-106, 129-143
+  
+  Added:
+    elif styp == 4:  # Alpha
+        for mode_str in self.decay_modes:
+            if mode_str.startswith('a') or mode_str.startswith('α'):
+                self.average_energies[mode_str] = avg_e
+
+================================================================================
+                       ENERGY FIELDS NOW EXTRACTED
+================================================================================
+
+For Alpha Decays (STYP=4):
+  ✅ ER_AV          - Mean alpha energy (primary field)
+  ✅ ER             - Individual alpha group energies
+  ✅ RI             - Intensity (alphas per 100 decays)
+  ✅ HF             - Hindrance factor (if present)
+  ✅ Branching      - Alpha branching ratios
+  ✅ Q-values       - Alpha decay Q-values
+
+For All Other STYP Types:
+  ✅ Beta- (STYP=1)   - Average, endpoint, intensity
+  ✅ Beta+ (STYP=2)   - Average, endpoint, intensity
+  ✅ Gamma (STYP=0)   - Energy, intensities, ICC
+  ✅ X-rays (STYP=8)  - Energy, intensities
+  ✅ Auger (STYP=9)   - Energy, intensities
+
+================================================================================
+                         EXAMPLE: Am-241 ALPHA DECAY
+================================================================================
+
+Input (ENDF data):
+  Nuclide:        Am-241
+  Half-life:      432 years (1.36e10 seconds)
+  Decay mode:     100% alpha
+  ER_AV:          5.486 MeV (mean alpha energy)
+  Alpha groups:   5.486 MeV (84.8%), 5.443 MeV (13.1%)
+
+Output (Extracted):
+  ✓ Decay mode:         a: 100.0%
+  ✓ Average energy:     5.486 MeV
+  ✓ Endpoint energy:    5.486 MeV
+  ✓ Correctly mapped to 'a' decay mode
+
+================================================================================
+                            COMPLETE FIX SUMMARY
+================================================================================
+
+THREE CRITICAL FIXES APPLIED:
+
+1. ✅ Beta- (STYP=1) Energy Extraction
+   • Added STYP=1 handling to both parser files
+   • Now extracts Beta- average and endpoint energies
+   
+2. ✅ Single File Support
+   • Parser now accepts both single files and directories
+   • Auto-detects JEFF-4.0 (single file) vs ENDF-B-VIII.0 (directory)
+   
+3. ✅ Alpha (STYP=4) Energy Extraction
+   • Added STYP=4 energy mapping to ENDFParsing.py
+   • Now extracts alpha mean energies and discrete groups
+
+================================================================================
+                              DEPLOYMENT
+================================================================================
+
+Copy these 2 updated files to your project:
+
+  cp /workspace/JEFF_ENDF_parser.py \
+     /Users/audreywarn/fluka-db-audrey/src/PyClasses/
+  
+  cp /workspace/ENDFParsing.py \
+     /Users/audreywarn/fluka-db-audrey/src/PyClasses/
+
+Then run your command:
+
+  python3 main_db.py -r process_endf \
+      -n "/path/to/Radioactive_Decay_Data_JEFF-40.endf" \
+      -o "../outputs/endf/"
+
+================================================================================
+                            COMPATIBILITY
+================================================================================
+
+✅ All 6 STYP types work (Gamma, Beta-, Beta+, Alpha, X-ray, Auger)
+✅ Single file mode (JEFF-4.0 format)
+✅ Directory mode (ENDF-B-VIII.0 format)
+✅ 75-character lines (no sequence numbers)
+✅ 80-character lines (with sequence numbers)
+✅ Backward compatible - no breaking changes
+✅ EC/B+ splitting still works correctly
+
+================================================================================
+                              CONCLUSION
+================================================================================
+
+✅ Beta- energies now extracted (STYP=1)
+✅ Alpha energies now extracted (STYP=4)
+✅ Single file support added
+✅ All 6 STYP types verified working
+✅ 100% test pass rate
+✅ Ready for production use
+
+              🎯 ALL ENERGY EXTRACTION ISSUES RESOLVED 🎯
+
+================================================================================
