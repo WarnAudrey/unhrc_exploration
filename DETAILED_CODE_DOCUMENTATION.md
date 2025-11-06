@@ -21,6 +21,14 @@ This document provides a comprehensive explanation of the ENDF parsing architect
    - Explains why the layered architecture is essential
    - **Location**: `/workspace/JEFF_ENDF_parser_ARCHITECTURE.md`
 
+### 3. **WHY_ENDFPARSING_VS_DATAMODULE.md**
+   - **Critical architectural explanation**
+   - Clarifies ENDFParsing vs. DataModule roles
+   - Shows the multi-source parser → container → database architecture
+   - Explains why separation is necessary
+   - Answers: "Why not merge them?"
+   - **Location**: `/workspace/WHY_ENDFPARSING_VS_DATAMODULE.md`
+
 ## Quick Summary
 
 ### The Two-Layer Architecture
