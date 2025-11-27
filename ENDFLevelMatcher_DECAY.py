@@ -92,23 +92,23 @@ class ENDFLevelMatcherDECAY:
                 if line.strip() and not line.strip().startswith('#'):
                     lines.append(line)
         
-        # Skip header lines (first 2 lines: column names and index names)
-        # Line 0: "                                           Endpoint_energy  Average_energy       Intensity"
-        # Line 1: "A   Z   parentLevel decay_mode final_level"
-        # Line 2+: actual data
-        data_lines = lines[2:]
-        
         # Process data to remove units
+        # Only process lines that start with a digit (actual data, not headers)
         processed_data = []
-        for line in data_lines:
+        for line in lines:
             parts = line.split()
             if len(parts) >= 5:
-                # First 5 are index: A, Z, parentLevel, decay_mode, final_level
-                a = int(parts[0])
-                z = int(parts[1])
-                parent_level = float(parts[2])
-                decay_mode = parts[3]
-                final_level = float(parts[4])
+                # Check if first part is a digit (data line) vs letter (header line)
+                try:
+                    # First 5 are index: A, Z, parentLevel, decay_mode, final_level
+                    a = int(parts[0])
+                    z = int(parts[1])
+                    parent_level = float(parts[2])
+                    decay_mode = parts[3]
+                    final_level = float(parts[4])
+                except ValueError:
+                    # This is a header line, skip it
+                    continue
                 
                 # Remaining parts are data columns with units
                 # Format: value unit value unit value unit
