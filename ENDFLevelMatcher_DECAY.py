@@ -210,11 +210,13 @@ class ENDFLevelMatcherDECAY:
             decay_mode = row['decay_mode']
             final_level = row['final_level']
             
-            energy = row.get('Average_energy', np.nan)
-            if pd.isna(energy):
-                energy = row.get('Endpoint_energy', np.nan)
+            # Get Q-value (total decay energy)
+            # Use Average_energy as proxy for Q-value, or Endpoint_energy
+            q_value = row.get('Average_energy', np.nan)
+            if pd.isna(q_value):
+                q_value = row.get('Endpoint_energy', np.nan)
             
-            if pd.isna(energy):
+            if pd.isna(q_value) or q_value <= 0:
                 continue
             
             daughter_a, daughter_z = self._get_daughter_nucleus(
@@ -227,15 +229,41 @@ class ENDFLevelMatcherDECAY:
             if key not in daughter_levels:
                 daughter_levels[key] = {}
             
+            # Store Q-value for this transition (parent → daughter level)
+            # The Q-value tells us the energy available, which relates to the final level
+            # For ground state: Q_max
+            # For excited states: Q_max - E_level
             if final_level not in daughter_levels[key]:
-                daughter_levels[key][final_level] = energy
+                daughter_levels[key][final_level] = q_value
+            else:
+                # Keep the maximum Q-value for this level (closest to true Q)
+                daughter_levels[key][final_level] = max(
+                    daughter_levels[key][final_level], 
+                    q_value
+                )
         
+        # Now convert Q-values to level energies
+        # Level 0 (ground) has energy 0
+        # Higher levels: E_level = Q_level0 - Q_level_n
         for (a, z), levels in daughter_levels.items():
+            if not levels:
+                continue
+            
+            # Get ground state Q-value (level 0)
+            ground_q = levels.get(0.0, None)
+            
             level_data = []
-            for level_num, energy in levels.items():
+            for level_num, q_val in levels.items():
+                if ground_q is not None and ground_q > 0:
+                    # Level energy = Q(ground) - Q(level)
+                    level_energy = ground_q - q_val
+                else:
+                    # No ground state reference, use Q-value directly
+                    level_energy = q_val
+                
                 level_data.append({
                     'level_number': level_num, 
-                    'Energy': energy
+                    'Energy': abs(level_energy)  # Ensure positive
                 })
             
             if level_data:
