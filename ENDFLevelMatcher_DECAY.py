@@ -528,7 +528,40 @@ class ENDFLevelMatcherDECAY:
         keep_cols = [c for c in keep_cols if c in df_out.columns]
         df_out = df_out[keep_cols]
         
-        df_out.to_csv(output_path, sep=' ', float_format='%.6e', na_rep='')
+        # Save with proper MultiIndex formatting
+        with open(output_path, 'w') as f:
+            # Write header with proper spacing
+            # Index column names
+            index_names = ['A', 'Z', 'parentLevel', 'decay_mode', 'final_level']
+            header_spacing = ' ' * 44  # Space for index columns
+            data_cols = ' '.join([f'{col:>18}' for col in keep_cols])
+            f.write(f"{header_spacing}{data_cols}\n")
+            f.write(f"{' '.join([f'{name:<3}' if i < 2 else f'{name:<15}' for i, name in enumerate(index_names)])}\n")
+            
+            # Write data rows
+            for idx, row in df_out.iterrows():
+                # Format index values
+                a_val = f"{idx[0]:<4d}"
+                z_val = f"{idx[1]:<4d}"
+                pl_val = f"{idx[2]:<15.4e}"
+                dm_val = f"{idx[3]:<15}"
+                fl_val = f"{idx[4]:<15.4e}"
+                
+                # Format data values
+                data_vals = []
+                for col in keep_cols:
+                    val = row[col]
+                    if pd.isna(val):
+                        data_vals.append(' ' * 18)
+                    elif isinstance(val, str):
+                        data_vals.append(f"{val:>18}")
+                    elif isinstance(val, bool):
+                        data_vals.append(f"{str(val):>18}")
+                    else:
+                        data_vals.append(f"{val:>18.6e}")
+                
+                line = f"{a_val}{z_val}{pl_val}{dm_val}{fl_val} {' '.join(data_vals)}\n"
+                f.write(line)
         
         print(f"\nSaved matched DECAY data to: {output_path}")
         print(f"  Total entries: {len(df_out)}")
