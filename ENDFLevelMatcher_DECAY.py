@@ -298,7 +298,43 @@ class ENDFLevelMatcherDECAY:
         total_levels = sum(len(levels) for levels in self.daughter_level_lookup.values())
         print(f"    Built level lookup for {total_daughters} daughter nuclei")
         print(f"    Total daughter levels: {total_levels}")
-        print(f"  Step 3: Lookup ready for matching!\n")
+        
+        # Step 3: Build Q_max from ENDF for parents not in ENSDF
+        print("  Step 3: Building Q_max from ENDF for missing parents...")
+        endf_reset = self.endf_decay_df.reset_index()
+        
+        for idx, row in endf_reset.iterrows():
+            parent_a = int(row['A'])
+            parent_z = int(row['Z'])
+            parent_level = float(row['parentLevel'])
+            decay_mode = str(row['decay_mode'])
+            
+            # Only use ground state
+            if parent_level != 0:
+                continue
+            
+            q_key = (parent_a, parent_z, decay_mode)
+            
+            # Skip if we already have it from ENSDF
+            if q_key in self.q_max_lookup:
+                continue
+            
+            # Get max particle energy from ENDF
+            endpoint = row.get('Endpoint_energy', np.nan)
+            average = row.get('Average_energy', np.nan)
+            energy = endpoint if not pd.isna(endpoint) else average
+            
+            if pd.isna(energy) or energy <= 0:
+                continue
+            
+            if q_key not in self.q_max_lookup:
+                self.q_max_lookup[q_key] = energy
+            else:
+                self.q_max_lookup[q_key] = max(self.q_max_lookup[q_key], energy)
+        
+        print(f"    Added Q_max from ENDF: {len(self.q_max_lookup) - len(q_max_lookup)} parents")
+        print(f"    Total Q_max available: {len(self.q_max_lookup)}")
+        print(f"  Step 4: Lookup ready for matching!\n")
     
     def set_tolerances(self, absolute_tol=None, relative_tol=None, 
                       strategy=None, hybrid_threshold=None, 
@@ -367,19 +403,35 @@ class ENDFLevelMatcherDECAY:
         # Step 3: Look up daughter levels
         d_key = (daughter_a, daughter_z)
         if d_key not in self.daughter_level_lookup:
-            if verbose:
-                print(f"    ✗ No ENSDF level data for daughter {daughter_name}")
-            return MatchResult(
-                matched=False,
-                final_level=np.nan,
-                ensdf_energy=np.nan,
-                endf_q_value=endf_particle_energy,
-                energy_diff=np.nan,
-                rel_diff=np.nan,
-                match_quality="no_daughter_levels",
-                ambiguous=False,
-                daughter_nuclide=daughter_name
-            )
+            # If no ENSDF data, but level energy is close to 0, assign ground state
+            if abs(endf_level_energy) <= self.absolute_tol:
+                if verbose:
+                    print(f"    ~ No ENSDF data, but level ~0, assigning ground state")
+                return MatchResult(
+                    matched=True,
+                    final_level=0.0,
+                    ensdf_energy=0.0,
+                    endf_q_value=endf_particle_energy,
+                    energy_diff=abs(endf_level_energy),
+                    rel_diff=0.0,
+                    match_quality="assumed_ground",
+                    ambiguous=False,
+                    daughter_nuclide=daughter_name
+                )
+            else:
+                if verbose:
+                    print(f"    ✗ No ENSDF level data for daughter {daughter_name}")
+                return MatchResult(
+                    matched=False,
+                    final_level=np.nan,
+                    ensdf_energy=np.nan,
+                    endf_q_value=endf_particle_energy,
+                    energy_diff=np.nan,
+                    rel_diff=np.nan,
+                    match_quality="no_daughter_levels",
+                    ambiguous=False,
+                    daughter_nuclide=daughter_name
+                )
         
         daughter_levels = self.daughter_level_lookup[d_key]
         if verbose:
@@ -566,13 +618,26 @@ class ENDFLevelMatcherDECAY:
                     endf_reset.at[idx, 'ensdf_particle_energy_MeV'] = match.ensdf_energy / 1e6
                 endf_reset.at[idx, 'daughter_nuclide'] = match.daughter_nuclide
         
+        # Count match types
+        exact = sum(1 for m in self.match_results if m.match_quality == "exact")
+        good = sum(1 for m in self.match_results if m.match_quality == "good")
+        acceptable = sum(1 for m in self.match_results if m.match_quality == "acceptable")
+        marginal = sum(1 for m in self.match_results if m.match_quality == "marginal")
+        assumed = sum(1 for m in self.match_results if m.match_quality == "assumed_ground")
+        
         # Count failure reasons
         no_q_max = sum(1 for m in self.match_results if m.match_quality == "no_q_max")
         no_daughter = sum(1 for m in self.match_results if m.match_quality == "no_daughter_levels")
         failed = sum(1 for m in self.match_results if m.match_quality == "failed")
         
         print(f"\nMatching complete!")
-        print(f"  ✓ Matched: {matched_count}/{len(endf_reset)} ({100*matched_count/len(endf_reset):.1f}%)")
+        print(f"  ✓ Total matched: {matched_count}/{len(endf_reset)} ({100*matched_count/len(endf_reset):.1f}%)")
+        print(f"\nMatch quality:")
+        print(f"  ✓ Exact: {exact}")
+        print(f"  ✓ Good: {good}")
+        print(f"  ✓ Acceptable: {acceptable}")
+        print(f"  ✓ Marginal: {marginal}")
+        print(f"  ~ Assumed ground: {assumed}")
         print(f"\nFailure breakdown:")
         print(f"  ✗ No Q_max for parent: {no_q_max}")
         print(f"  ✗ No daughter level data: {no_daughter}")
