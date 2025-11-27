@@ -15,7 +15,8 @@ class MatchStrategy(Enum):
 @dataclass
 class MatchResult:
     matched: bool
-    final_level: float
+    parent_level: float  # Matched parent level
+    final_level: float   # Matched daughter level
     ensdf_energy: float
     endf_q_value: float
     energy_diff: float
@@ -200,50 +201,29 @@ class ENDFLevelMatcherDECAY:
     
     def _build_ensdf_level_lookup(self):
         """
-        Build lookup table of daughter level energies from ENSDF.
+        Build complete transition lookup from ENSDF.
         
-        Logic:
-        1. For each parent/decay_mode, find Q_max (ground→ground transition)
-        2. Calculate daughter level energy = Q_max - Particle_Energy
-        3. Store: Daughter(A,Z) → {level_number: level_energy}
+        Physics: E_particle = Q_ground + E_parent - E_daughter
+        
+        For each transition, store:
+        - Parent (A, Z, decay_mode)
+        - Parent level number and energy
+        - Daughter level number and energy
+        - Expected particle energy
         """
-        print("Building ENSDF daughter level lookup...")
-        print("  Step 1: Finding Q_max for each parent/decay_mode...")
+        print("Building ENSDF transition lookup...")
+        print("  Step 1: Building parent level energies...")
         
         ensdf_reset = self.ensdf_decay_df.reset_index()
         
-        # Step 1: Find Q_max (maximum particle energy = ground to ground)
-        q_max_lookup = {}  # (parent_a, parent_z, decay_mode) -> Q_max
+        # Step 1: Build parent level lookup
+        # We need parent level energies - get from ENSDF parent states
+        # For now, assume parentLevel in ENSDF is given (0 = ground)
+        # In a full implementation, you'd load parent level schemes
         
-        for idx, row in ensdf_reset.iterrows():
-            parent_a = int(row['A'])
-            parent_z = int(row['Z'])
-            parent_level = float(row['parentLevel'])
-            decay_mode = str(row['decay_mode'])
-            
-            # Only use ground state parent for Q_max
-            if parent_level != 0:
-                continue
-            
-            # Get maximum particle energy (should be for ground→ground)
-            endpoint = row.get('Endpoint_energy', np.nan)
-            average = row.get('Average_energy', np.nan)
-            energy = endpoint if not pd.isna(endpoint) else average
-            
-            if pd.isna(energy) or energy <= 0:
-                continue
-            
-            key = (parent_a, parent_z, decay_mode)
-            if key not in q_max_lookup:
-                q_max_lookup[key] = energy
-            else:
-                q_max_lookup[key] = max(q_max_lookup[key], energy)
-        
-        print(f"    Found Q_max for {len(q_max_lookup)} parent/decay combinations")
-        
-        # Step 2: Calculate daughter level energies
-        print("  Step 2: Calculating daughter level energies...")
-        self.daughter_level_lookup = {}  # (daughter_a, daughter_z) -> {level_num: energy}
+        # Step 2: Find Q_ground (ground → ground maximum energy)
+        print("  Step 2: Finding Q_ground for each parent/decay_mode...")
+        q_ground_lookup = {}  # (parent_a, parent_z, decay_mode) -> Q_ground
         
         for idx, row in ensdf_reset.iterrows():
             parent_a = int(row['A'])
@@ -252,11 +232,36 @@ class ENDFLevelMatcherDECAY:
             decay_mode = str(row['decay_mode'])
             final_level = float(row['final_level'])
             
-            # Only use ground state parent
-            if parent_level != 0:
+            # Ground to ground transition
+            if parent_level != 0 or final_level != 0:
                 continue
             
-            # Get particle energy
+            endpoint = row.get('Endpoint_energy', np.nan)
+            average = row.get('Average_energy', np.nan)
+            particle_energy = endpoint if not pd.isna(endpoint) else average
+            
+            if pd.isna(particle_energy) or particle_energy <= 0:
+                continue
+            
+            key = (parent_a, parent_z, decay_mode)
+            if key not in q_ground_lookup:
+                q_ground_lookup[key] = particle_energy
+            else:
+                q_ground_lookup[key] = max(q_ground_lookup[key], particle_energy)
+        
+        print(f"    Found Q_ground for {len(q_ground_lookup)} parent/decay combinations")
+        
+        # Step 3: Build complete transition lookup
+        print("  Step 3: Building all transitions (parent_level, daughter_level)...")
+        self.transition_lookup = {}  # (parent_a, z, decay_mode) -> list of transitions
+        
+        for idx, row in ensdf_reset.iterrows():
+            parent_a = int(row['A'])
+            parent_z = int(row['Z'])
+            parent_level_num = float(row['parentLevel'])
+            decay_mode = str(row['decay_mode'])
+            daughter_level_num = float(row['final_level'])
+            
             endpoint = row.get('Endpoint_energy', np.nan)
             average = row.get('Average_energy', np.nan)
             particle_energy = endpoint if not pd.isna(endpoint) else average
@@ -264,62 +269,52 @@ class ENDFLevelMatcherDECAY:
             if pd.isna(particle_energy):
                 continue
             
-            # Get Q_max
-            q_key = (parent_a, parent_z, decay_mode)
-            if q_key not in q_max_lookup:
-                continue
-            q_max = q_max_lookup[q_key]
+            key = (parent_a, parent_z, decay_mode)
+            q_ground = q_ground_lookup.get(key, particle_energy)
             
-            # Calculate daughter level energy
-            # E_level = Q_max - E_particle (ignoring recoil)
-            level_energy = q_max - particle_energy
+            # Calculate level energies
+            # E_particle = Q_ground + E_parent - E_daughter
+            # For ground state transitions: E_particle = Q_ground
+            # E_daughter = Q_ground + E_parent - E_particle
             
-            # Get daughter nucleus
-            daughter_a, daughter_z = self._get_daughter_nucleus(parent_a, parent_z, decay_mode)
-            d_key = (daughter_a, daughter_z)
+            # Assume parent_level energy = 0 for level 0 (we don't have parent level schemes)
+            parent_level_energy = 0.0  # Simplification
+            daughter_level_energy = q_ground + parent_level_energy - particle_energy
             
-            if d_key not in self.daughter_level_lookup:
-                self.daughter_level_lookup[d_key] = {}
+            if key not in self.transition_lookup:
+                self.transition_lookup[key] = []
             
-            # Store level energy (use minimum if multiple entries)
-            if final_level not in self.daughter_level_lookup[d_key]:
-                self.daughter_level_lookup[d_key][final_level] = level_energy
-            else:
-                # Keep the most consistent value (closest to expected)
-                self.daughter_level_lookup[d_key][final_level] = min(
-                    self.daughter_level_lookup[d_key][final_level],
-                    level_energy
-                )
+            self.transition_lookup[key].append({
+                'parent_level': parent_level_num,
+                'daughter_level': daughter_level_num,
+                'particle_energy': particle_energy,
+                'daughter_level_energy': daughter_level_energy
+            })
         
-        # Also store Q_max for ENDF matching
-        self.q_max_lookup = q_max_lookup
+        self.q_ground_lookup = q_ground_lookup
         
-        total_daughters = len(self.daughter_level_lookup)
-        total_levels = sum(len(levels) for levels in self.daughter_level_lookup.values())
-        print(f"    Built level lookup for {total_daughters} daughter nuclei")
-        print(f"    Total daughter levels: {total_levels}")
+        total_parents = len(self.transition_lookup)
+        total_transitions = sum(len(v) for v in self.transition_lookup.values())
+        print(f"    Built {total_transitions} transitions for {total_parents} parents")
         
-        # Step 3: Build Q_max from ENDF for parents not in ENSDF
-        print("  Step 3: Building Q_max from ENDF for missing parents...")
+        # Step 4: Add ENDF Q_ground for missing parents
+        print("  Step 4: Adding Q_ground from ENDF...")
         endf_reset = self.endf_decay_df.reset_index()
         
+        added = 0
         for idx, row in endf_reset.iterrows():
             parent_a = int(row['A'])
             parent_z = int(row['Z'])
             parent_level = float(row['parentLevel'])
             decay_mode = str(row['decay_mode'])
             
-            # Only use ground state
             if parent_level != 0:
                 continue
             
-            q_key = (parent_a, parent_z, decay_mode)
-            
-            # Skip if we already have it from ENSDF
-            if q_key in self.q_max_lookup:
+            key = (parent_a, parent_z, decay_mode)
+            if key in self.q_ground_lookup:
                 continue
             
-            # Get max particle energy from ENDF
             endpoint = row.get('Endpoint_energy', np.nan)
             average = row.get('Average_energy', np.nan)
             energy = endpoint if not pd.isna(endpoint) else average
@@ -327,14 +322,12 @@ class ENDFLevelMatcherDECAY:
             if pd.isna(energy) or energy <= 0:
                 continue
             
-            if q_key not in self.q_max_lookup:
-                self.q_max_lookup[q_key] = energy
-            else:
-                self.q_max_lookup[q_key] = max(self.q_max_lookup[q_key], energy)
+            self.q_ground_lookup[key] = energy
+            added += 1
         
-        print(f"    Added Q_max from ENDF: {len(self.q_max_lookup) - len(q_max_lookup)} parents")
-        print(f"    Total Q_max available: {len(self.q_max_lookup)}")
-        print(f"  Step 4: Lookup ready for matching!\n")
+        print(f"    Added Q_ground from ENDF: {added}")
+        print(f"    Total Q_ground available: {len(self.q_ground_lookup)}")
+        print("  Step 5: Lookup ready for matching!\n")
     
     def set_tolerances(self, absolute_tol=None, relative_tol=None, 
                       strategy=None, hybrid_threshold=None, 
@@ -358,13 +351,14 @@ class ENDFLevelMatcherDECAY:
     def _find_matching_transition(self, parent_a, parent_z, parent_level, 
                                   decay_mode, endf_particle_energy, parent_name, verbose=False):
         """
-        Match ENDF decay to ENSDF daughter levels.
+        Match ENDF particle energy to ENSDF transitions.
+        
+        Returns BOTH parent_level and daughter_level from the best matching transition.
         
         Logic:
-        1. Get Q_max for this parent/decay_mode
-        2. Calculate ENDF daughter level energy = Q_max - ENDF_particle_energy
-        3. Match to ENSDF known daughter level energies
-        4. Return the matching level number
+        1. Look up all ENSDF transitions for this parent/decay_mode  
+        2. Find transition with closest particle energy match
+        3. Return (parent_level, daughter_level) from that transition
         """
         daughter_a, daughter_z = self._get_daughter_nucleus(parent_a, parent_z, decay_mode)
         daughter_elem = ATOMIC_SYMBOL.get(daughter_z, f'Z{daughter_z}')
@@ -374,19 +368,39 @@ class ENDFLevelMatcherDECAY:
             print(f"\n  Matching: {parent_name} -> {daughter_name} via {decay_mode}")
             print(f"    ENDF particle energy: {endf_particle_energy/1e3:.2f} keV")
         
-        # Step 1: Get Q_max
-        q_key = (parent_a, parent_z, decay_mode)
-        if q_key not in self.q_max_lookup:
+        # Look up ENSDF transitions for this parent
+        key = (parent_a, parent_z, decay_mode)
+        if key not in self.transition_lookup:
+            # Try to assign ground->ground if energy matches Q_ground
+            if key in self.q_ground_lookup:
+                q_ground = self.q_ground_lookup[key]
+                if abs(endf_particle_energy - q_ground) <= self.absolute_tol:
+                    if verbose:
+                        print(f"    ✓ Matched to ground->ground transition")
+                    return MatchResult(
+                        matched=True,
+                        parent_level=0.0,
+                        final_level=0.0,
+                        ensdf_energy=q_ground,
+                        endf_q_value=endf_particle_energy,
+                        energy_diff=abs(endf_particle_energy - q_ground),
+                        rel_diff=abs(endf_particle_energy - q_ground) / max(q_ground, 1e-6),
+                        match_quality="assumed_ground",
+                        ambiguous=False,
+                        daughter_nuclide=daughter_name
+                    )
+            
             if verbose:
-                print(f"    ✗ No Q_max data for this parent/decay combination")
+                print(f"    ✗ No ENSDF transitions for this parent")
             return MatchResult(
                 matched=False,
+                parent_level=np.nan,
                 final_level=np.nan,
                 ensdf_energy=np.nan,
                 endf_q_value=endf_particle_energy,
                 energy_diff=np.nan,
                 rel_diff=np.nan,
-                match_quality="no_q_max",
+                match_quality="no_ensdf_data",
                 ambiguous=False,
                 daughter_nuclide=daughter_name
             )
