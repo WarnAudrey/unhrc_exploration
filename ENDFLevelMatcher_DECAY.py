@@ -72,55 +72,27 @@ class ENDFLevelMatcherDECAY:
         print("="*70)
         
         print(f"Loading ENDF: {self.endf_decay_path}")
-        try:
-            self.endf_decay_df = pd.read_csv(
-                self.endf_decay_path, 
-                sep=r'\s+', 
-                comment='#',
-                engine='python'
-            )
-        except Exception as e:
-            print(f"Error reading ENDF file: {e}")
-            print("Trying with different parameters...")
-            with open(self.endf_decay_path, 'r') as f:
-                for i, line in enumerate(f):
-                    if i < 5:
-                        print(f"Line {i}: {line.strip()}")
-            raise
-        
-        print(f"  Columns found: {list(self.endf_decay_df.columns)}")
-        
-        if 'A' in self.endf_decay_df.columns:
-            idx_cols = ['A', 'Z', 'parentLevel', 'decay_mode', 'final_level']
-            available_idx = [c for c in idx_cols if c in self.endf_decay_df.columns]
-            if len(available_idx) == len(idx_cols):
-                self.endf_decay_df = self.endf_decay_df.set_index(idx_cols)
+        self.endf_decay_df = pd.read_csv(
+            self.endf_decay_path, 
+            sep=r'\s+', 
+            comment='#',
+            index_col=[0, 1, 2, 3, 4],
+            engine='python'
+        )
+        print(f"  Index names: {self.endf_decay_df.index.names}")
+        print(f"  Columns: {list(self.endf_decay_df.columns)}")
         print(f"  ENDF entries: {len(self.endf_decay_df)}")
         
-        print(f"Loading ENSDF: {self.ensdf_decay_path}")
-        try:
-            self.ensdf_decay_df = pd.read_csv(
-                self.ensdf_decay_path, 
-                sep=r'\s+', 
-                comment='#',
-                engine='python'
-            )
-        except Exception as e:
-            print(f"Error reading ENSDF file: {e}")
-            print("Trying with different parameters...")
-            with open(self.ensdf_decay_path, 'r') as f:
-                for i, line in enumerate(f):
-                    if i < 5:
-                        print(f"Line {i}: {line.strip()}")
-            raise
-        
-        print(f"  Columns found: {list(self.ensdf_decay_df.columns)}")
-        
-        if 'A' in self.ensdf_decay_df.columns:
-            idx_cols = ['A', 'Z', 'parentLevel', 'decay_mode', 'final_level']
-            available_idx = [c for c in idx_cols if c in self.ensdf_decay_df.columns]
-            if len(available_idx) == len(idx_cols):
-                self.ensdf_decay_df = self.ensdf_decay_df.set_index(idx_cols)
+        print(f"\nLoading ENSDF: {self.ensdf_decay_path}")
+        self.ensdf_decay_df = pd.read_csv(
+            self.ensdf_decay_path, 
+            sep=r'\s+', 
+            comment='#',
+            index_col=[0, 1, 2, 3, 4],
+            engine='python'
+        )
+        print(f"  Index names: {self.ensdf_decay_df.index.names}")
+        print(f"  Columns: {list(self.ensdf_decay_df.columns)}")
         print(f"  ENSDF entries: {len(self.ensdf_decay_df)}")
         print("="*70 + "\n")
     
