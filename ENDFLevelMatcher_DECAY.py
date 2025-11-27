@@ -200,14 +200,50 @@ class ENDFLevelMatcherDECAY:
     
     def _build_ensdf_level_lookup(self):
         """
-        Build a lookup table: (Parent A, Z, level, decay_mode) -> list of (energy, final_level)
+        Build lookup table of daughter level energies from ENSDF.
         
-        Key insight: Match decays from SAME parent by comparing particle energies
+        Logic:
+        1. For each parent/decay_mode, find Q_max (ground→ground transition)
+        2. Calculate daughter level energy = Q_max - Particle_Energy
+        3. Store: Daughter(A,Z) → {level_number: level_energy}
         """
-        print("Building ENSDF transition lookup...")
-        self.transition_lookup = {}
+        print("Building ENSDF daughter level lookup...")
+        print("  Step 1: Finding Q_max for each parent/decay_mode...")
         
         ensdf_reset = self.ensdf_decay_df.reset_index()
+        
+        # Step 1: Find Q_max (maximum particle energy = ground to ground)
+        q_max_lookup = {}  # (parent_a, parent_z, decay_mode) -> Q_max
+        
+        for idx, row in ensdf_reset.iterrows():
+            parent_a = int(row['A'])
+            parent_z = int(row['Z'])
+            parent_level = float(row['parentLevel'])
+            decay_mode = str(row['decay_mode'])
+            
+            # Only use ground state parent for Q_max
+            if parent_level != 0:
+                continue
+            
+            # Get maximum particle energy (should be for ground→ground)
+            endpoint = row.get('Endpoint_energy', np.nan)
+            average = row.get('Average_energy', np.nan)
+            energy = endpoint if not pd.isna(endpoint) else average
+            
+            if pd.isna(energy) or energy <= 0:
+                continue
+            
+            key = (parent_a, parent_z, decay_mode)
+            if key not in q_max_lookup:
+                q_max_lookup[key] = energy
+            else:
+                q_max_lookup[key] = max(q_max_lookup[key], energy)
+        
+        print(f"    Found Q_max for {len(q_max_lookup)} parent/decay combinations")
+        
+        # Step 2: Calculate daughter level energies
+        print("  Step 2: Calculating daughter level energies...")
+        self.daughter_level_lookup = {}  # (daughter_a, daughter_z) -> {level_num: energy}
         
         for idx, row in ensdf_reset.iterrows():
             parent_a = int(row['A'])
@@ -216,33 +252,53 @@ class ENDFLevelMatcherDECAY:
             decay_mode = str(row['decay_mode'])
             final_level = float(row['final_level'])
             
-            # Get particle energy (what we'll match on)
-            # Priority: Endpoint_energy > Average_energy
-            energy = row.get('Endpoint_energy', np.nan)
-            if pd.isna(energy):
-                energy = row.get('Average_energy', np.nan)
+            # Only use ground state parent
+            if parent_level != 0:
+                continue
             
-            # Key: (parent A, Z, level, decay_mode)
-            key = (parent_a, parent_z, parent_level, decay_mode)
+            # Get particle energy
+            endpoint = row.get('Endpoint_energy', np.nan)
+            average = row.get('Average_energy', np.nan)
+            particle_energy = endpoint if not pd.isna(endpoint) else average
             
-            if key not in self.transition_lookup:
-                self.transition_lookup[key] = []
+            if pd.isna(particle_energy):
+                continue
             
-            # Store: (energy, final_level, intensity)
-            intensity = row.get('Intensity', 100.0)
-            self.transition_lookup[key].append({
-                'energy': energy if not pd.isna(energy) else 0.0,
-                'final_level': final_level,
-                'intensity': intensity if not pd.isna(intensity) else 0.0
-            })
+            # Get Q_max
+            q_key = (parent_a, parent_z, decay_mode)
+            if q_key not in q_max_lookup:
+                continue
+            q_max = q_max_lookup[q_key]
+            
+            # Calculate daughter level energy
+            # E_level = Q_max - E_particle (ignoring recoil)
+            level_energy = q_max - particle_energy
+            
+            # Get daughter nucleus
+            daughter_a, daughter_z = self._get_daughter_nucleus(parent_a, parent_z, decay_mode)
+            d_key = (daughter_a, daughter_z)
+            
+            if d_key not in self.daughter_level_lookup:
+                self.daughter_level_lookup[d_key] = {}
+            
+            # Store level energy (use minimum if multiple entries)
+            if final_level not in self.daughter_level_lookup[d_key]:
+                self.daughter_level_lookup[d_key][final_level] = level_energy
+            else:
+                # Keep the most consistent value (closest to expected)
+                self.daughter_level_lookup[d_key][final_level] = min(
+                    self.daughter_level_lookup[d_key][final_level],
+                    level_energy
+                )
         
-        # Sort each transition list by energy (descending) for easier matching
-        for key in self.transition_lookup:
-            self.transition_lookup[key].sort(key=lambda x: x['energy'], reverse=True)
+        # Also store Q_max for ENDF matching
+        self.q_max_lookup = q_max_lookup
         
-        total_transitions = sum(len(v) for v in self.transition_lookup.values())
-        print(f"  Built lookup for {len(self.transition_lookup)} parent/decay combinations")
-        print(f"  Total transitions catalogued: {total_transitions}\n")
+        total_daughters = len(self.daughter_level_lookup)
+        total_levels = sum(len(levels) for levels in self.daughter_level_lookup.values())
+        print(f"    Built level lookup for {total_daughters} daughter nuclei")
+        print(f"    Total daughter levels: {total_levels}")
+        print(f"  Step 3: Lookup ready for matching!\n")
     
     def set_tolerances(self, absolute_tol=None, relative_tol=None, 
                       strategy=None, hybrid_threshold=None, 
@@ -264,98 +320,105 @@ class ENDFLevelMatcherDECAY:
             self.relaxed_factor = relaxed_factor
     
     def _find_matching_transition(self, parent_a, parent_z, parent_level, 
-                                  decay_mode, endf_energy, endf_energy_alt, parent_name):
+                                  decay_mode, endf_particle_energy, parent_name, verbose=False):
         """
-        Find matching ENSDF transition for the same parent nucleus.
-        Match based on particle energy (Endpoint or Average energy).
-        Try both energy values if available.
+        Match ENDF decay to ENSDF daughter levels.
+        
+        Logic:
+        1. Get Q_max for this parent/decay_mode
+        2. Calculate ENDF daughter level energy = Q_max - ENDF_particle_energy
+        3. Match to ENSDF known daughter level energies
+        4. Return the matching level number
         """
         daughter_a, daughter_z = self._get_daughter_nucleus(parent_a, parent_z, decay_mode)
         daughter_elem = ATOMIC_SYMBOL.get(daughter_z, f'Z{daughter_z}')
         daughter_name = f"{daughter_elem}-{daughter_a}"
         
-        # Try exact key first, then try with parent_level=0 if not found
-        keys_to_try = [
-            (parent_a, parent_z, parent_level, decay_mode),
-            (parent_a, parent_z, 0, decay_mode) if parent_level != 0 else None,
-        ]
-        keys_to_try = [k for k in keys_to_try if k is not None]
+        if verbose:
+            print(f"\n  Matching: {parent_name} -> {daughter_name} via {decay_mode}")
+            print(f"    ENDF particle energy: {endf_particle_energy/1e3:.2f} keV")
         
-        key = None
-        for k in keys_to_try:
-            if k in self.transition_lookup:
-                key = k
-                break
-        
-        if key is None:
+        # Step 1: Get Q_max
+        q_key = (parent_a, parent_z, decay_mode)
+        if q_key not in self.q_max_lookup:
+            if verbose:
+                print(f"    ✗ No Q_max data for this parent/decay combination")
             return MatchResult(
                 matched=False,
                 final_level=np.nan,
                 ensdf_energy=np.nan,
-                endf_q_value=endf_energy,
+                endf_q_value=endf_particle_energy,
                 energy_diff=np.nan,
                 rel_diff=np.nan,
-                match_quality="no_ensdf_data",
+                match_quality="no_q_max",
                 ambiguous=False,
                 daughter_nuclide=daughter_name
             )
         
-        transitions = self.transition_lookup[key]
+        q_max = self.q_max_lookup[q_key]
+        if verbose:
+            print(f"    Q_max: {q_max/1e3:.2f} keV")
         
-        # Try matching with both energy values if available
-        energies_to_try = [endf_energy]
-        if not pd.isna(endf_energy_alt) and endf_energy_alt != endf_energy:
-            energies_to_try.append(endf_energy_alt)
+        # Step 2: Calculate ENDF daughter level energy
+        endf_level_energy = q_max - endf_particle_energy
+        if verbose:
+            print(f"    Calculated ENDF level energy: {endf_level_energy/1e3:.2f} keV")
         
-        # Find best match by particle energy
+        # Step 3: Look up daughter levels
+        d_key = (daughter_a, daughter_z)
+        if d_key not in self.daughter_level_lookup:
+            if verbose:
+                print(f"    ✗ No ENSDF level data for daughter {daughter_name}")
+            return MatchResult(
+                matched=False,
+                final_level=np.nan,
+                ensdf_energy=np.nan,
+                endf_q_value=endf_particle_energy,
+                energy_diff=np.nan,
+                rel_diff=np.nan,
+                match_quality="no_daughter_levels",
+                ambiguous=False,
+                daughter_nuclide=daughter_name
+            )
+        
+        daughter_levels = self.daughter_level_lookup[d_key]
+        if verbose:
+            print(f"    Found {len(daughter_levels)} ENSDF levels for {daughter_name}")
+        
+        # Step 4: Match to closest level
         best_match = None
         best_diff = np.inf
         matches_within_tol = []
         
-        for endf_e in energies_to_try:
-            if pd.isna(endf_e):
-                continue
-                
-            for trans in transitions:
-                ensdf_energy = trans['energy']
-                
-                # Skip if no energy data
-                if ensdf_energy == 0 or np.isnan(ensdf_energy):
-                    continue
-                
-                # Calculate energy difference
-                abs_diff = abs(ensdf_energy - endf_e)
-                
-                # Calculate tolerance
-                if self.strategy == MatchStrategy.ABSOLUTE:
-                    tolerance = self.absolute_tol
-                elif self.strategy == MatchStrategy.RELATIVE:
-                    tolerance = max(ensdf_energy * self.relative_tol, 1e-6)
-                elif self.strategy == MatchStrategy.HYBRID:
-                    if ensdf_energy < self.hybrid_threshold:
-                        tolerance = self.absolute_tol
-                    else:
-                        tolerance = ensdf_energy * self.relative_tol
-                
-                # Check if within tolerance
-                if abs_diff <= tolerance:
-                    matches_within_tol.append((abs_diff, trans, tolerance))
-                
-                # Track best match overall
-                if abs_diff < best_diff:
-                    best_diff = abs_diff
-                    best_match = (abs_diff, trans, tolerance if abs_diff <= tolerance else tolerance * self.relaxed_factor)
-        
-        # If we have matches within tolerance
-        if matches_within_tol:
-            # Sort by energy difference
-            matches_within_tol.sort(key=lambda x: x[0])
-            abs_diff, trans, tol = matches_within_tol[0]
+        for level_num, ensdf_level_energy in daughter_levels.items():
+            abs_diff = abs(ensdf_level_energy - endf_level_energy)
             
-            rel_diff = abs_diff / max(trans['energy'], 1e-6)
+            # Calculate tolerance
+            if self.strategy == MatchStrategy.ABSOLUTE:
+                tolerance = self.absolute_tol
+            elif self.strategy == MatchStrategy.RELATIVE:
+                tolerance = max(abs(ensdf_level_energy) * self.relative_tol, 1e3)
+            elif self.strategy == MatchStrategy.HYBRID:
+                if abs(ensdf_level_energy) < self.hybrid_threshold:
+                    tolerance = self.absolute_tol
+                else:
+                    tolerance = abs(ensdf_level_energy) * self.relative_tol
+            
+            if abs_diff <= tolerance:
+                matches_within_tol.append((abs_diff, level_num, ensdf_level_energy, tolerance))
+            
+            if abs_diff < best_diff:
+                best_diff = abs_diff
+                best_match = (abs_diff, level_num, ensdf_level_energy, tolerance)
+        
+        # Return best match
+        if matches_within_tol:
+            matches_within_tol.sort(key=lambda x: x[0])
+            abs_diff, level_num, ensdf_e, tol = matches_within_tol[0]
+            
+            rel_diff = abs_diff / max(abs(ensdf_e), 1e-6)
             ambiguous = len(matches_within_tol) > 1
             
-            # Determine quality
             if abs_diff < tol * 0.1:
                 quality = "exact"
             elif abs_diff < tol * 0.5:
@@ -363,11 +426,16 @@ class ENDFLevelMatcherDECAY:
             else:
                 quality = "acceptable"
             
+            if verbose:
+                print(f"    ✓ Matched to level {int(level_num)}")
+                print(f"      ENSDF level energy: {ensdf_e/1e3:.2f} keV")
+                print(f"      Difference: {abs_diff/1e3:.2f} keV ({quality})")
+            
             return MatchResult(
                 matched=True,
-                final_level=trans['final_level'],
-                ensdf_energy=trans['energy'],
-                endf_q_value=endf_energy,
+                final_level=level_num,
+                ensdf_energy=ensdf_e,
+                endf_q_value=endf_particle_energy,
                 energy_diff=abs_diff,
                 rel_diff=rel_diff,
                 match_quality=quality,
@@ -375,16 +443,21 @@ class ENDFLevelMatcherDECAY:
                 daughter_nuclide=daughter_name
             )
         
-        # Try with relaxed tolerance
+        # Try relaxed
         if best_match:
-            abs_diff, trans, relaxed_tol = best_match
-            if abs_diff <= relaxed_tol:
-                rel_diff = abs_diff / max(trans['energy'], 1e-6)
+            abs_diff, level_num, ensdf_e, tol = best_match
+            if abs_diff <= tol * self.relaxed_factor:
+                rel_diff = abs_diff / max(abs(ensdf_e), 1e-6)
+                if verbose:
+                    print(f"    ~ Marginal match to level {int(level_num)}")
+                    print(f"      ENSDF level energy: {ensdf_e/1e3:.2f} keV")
+                    print(f"      Difference: {abs_diff/1e3:.2f} keV (marginal)")
+                
                 return MatchResult(
                     matched=True,
-                    final_level=trans['final_level'],
-                    ensdf_energy=trans['energy'],
-                    endf_q_value=endf_energy,
+                    final_level=level_num,
+                    ensdf_energy=ensdf_e,
+                    endf_q_value=endf_particle_energy,
                     energy_diff=abs_diff,
                     rel_diff=rel_diff,
                     match_quality="marginal",
@@ -392,15 +465,21 @@ class ENDFLevelMatcherDECAY:
                     daughter_nuclide=daughter_name
                 )
         
-        # No match found
-        closest_energy = best_match[1]['energy'] if best_match else np.nan
+        # No match
+        if verbose:
+            if best_match:
+                _, _, ensdf_e, _ = best_match
+                print(f"    ✗ No match (closest: {ensdf_e/1e3:.2f} keV, diff: {best_diff/1e3:.2f} keV)")
+            else:
+                print(f"    ✗ No match found")
+        
         return MatchResult(
             matched=False,
             final_level=np.nan,
-            ensdf_energy=closest_energy,
-            endf_q_value=endf_energy,
-            energy_diff=best_diff if best_match else np.nan,
-            rel_diff=best_diff / max(closest_energy, 1e-6) if best_match else np.nan,
+            ensdf_energy=best_match[2] if best_match else np.nan,
+            endf_q_value=endf_particle_energy,
+            energy_diff=best_diff,
+            rel_diff=best_diff / max(abs(best_match[2]), 1e-6) if best_match else np.nan,
             match_quality="failed",
             ambiguous=False,
             daughter_nuclide=daughter_name
@@ -440,20 +519,19 @@ class ENDFLevelMatcherDECAY:
             decay_mode = str(row['decay_mode'])
             parent_name = row.get('Parent', f"{parent_a}-{parent_z}")
             
-            # Get ENDF particle energies (try both)
+            # Get ENDF particle energy
             endf_energy = row.get(energy_column, np.nan)
-            alt_col = 'Average_energy' if energy_column == 'Endpoint_energy' else 'Endpoint_energy'
-            endf_energy_alt = row.get(alt_col, np.nan)
+            if pd.isna(endf_energy):
+                alt_col = 'Average_energy' if energy_column == 'Endpoint_energy' else 'Endpoint_energy'
+                endf_energy = row.get(alt_col, np.nan)
             
-            if pd.isna(endf_energy) and pd.isna(endf_energy_alt):
+            if pd.isna(endf_energy):
                 self.unmatched_decays.append(row.to_dict())
                 endf_reset.at[idx, 'match_quality'] = 'no_endf_energy'
                 continue
             
-            # Use first available energy as primary
-            if pd.isna(endf_energy):
-                endf_energy = endf_energy_alt
-                endf_energy_alt = np.nan
+            # Verbose for first 3 matches
+            verbose = idx < 3
             
             # Find matching transition
             match = self._find_matching_transition(
@@ -462,8 +540,8 @@ class ENDFLevelMatcherDECAY:
                 parent_level,
                 decay_mode,
                 endf_energy,
-                endf_energy_alt,
-                parent_name
+                parent_name,
+                verbose=verbose
             )
             self.match_results.append(match)
             
@@ -488,10 +566,18 @@ class ENDFLevelMatcherDECAY:
                     endf_reset.at[idx, 'ensdf_particle_energy_MeV'] = match.ensdf_energy / 1e6
                 endf_reset.at[idx, 'daughter_nuclide'] = match.daughter_nuclide
         
-        print(f"Matching complete:")
-        print(f"  Matched: {matched_count}/{len(endf_reset)}")
-        print(f"  No ENSDF data: {no_ensdf_count}")
-        print(f"  Failed (with ENSDF data): {len(self.unmatched_decays)}\n")
+        # Count failure reasons
+        no_q_max = sum(1 for m in self.match_results if m.match_quality == "no_q_max")
+        no_daughter = sum(1 for m in self.match_results if m.match_quality == "no_daughter_levels")
+        failed = sum(1 for m in self.match_results if m.match_quality == "failed")
+        
+        print(f"\nMatching complete!")
+        print(f"  ✓ Matched: {matched_count}/{len(endf_reset)} ({100*matched_count/len(endf_reset):.1f}%)")
+        print(f"\nFailure breakdown:")
+        print(f"  ✗ No Q_max for parent: {no_q_max}")
+        print(f"  ✗ No daughter level data: {no_daughter}")
+        print(f"  ✗ Energy mismatch: {failed}")
+        print(f"  Total failed: {no_q_max + no_daughter + failed}\n")
         
         self.matched_decay_df = endf_reset
         return self.matched_decay_df
