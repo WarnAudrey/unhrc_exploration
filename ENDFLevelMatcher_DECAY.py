@@ -92,9 +92,11 @@ class ENDFLevelMatcherDECAY:
                 if line.strip() and not line.strip().startswith('#'):
                     lines.append(line)
         
-        # Parse header
-        header_line = lines[0]
-        data_lines = lines[1:]
+        # Skip header lines (first 2 lines: column names and index names)
+        # Line 0: "                                           Endpoint_energy  Average_energy       Intensity"
+        # Line 1: "A   Z   parentLevel decay_mode final_level"
+        # Line 2+: actual data
+        data_lines = lines[2:]
         
         # Process data to remove units
         processed_data = []
