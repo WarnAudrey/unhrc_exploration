@@ -714,20 +714,20 @@ class ENDFLevelMatcherDECAY:
         
         df_out = self.matched_decay_df.copy()
         
-        # Update final_level with matched values
+        # Update final_level with matched values (THIS IS THE KEY UPDATE!)
         df_out.loc[df_out['final_level_matched'].notna(), 'final_level'] = df_out['final_level_matched']
         
         idx_cols = ['A', 'Z', 'parentLevel', 'decay_mode', 'final_level']
         df_out = df_out.set_index(idx_cols)
         
-        # Keep relevant columns (match ENDF format plus diagnostics)
-        keep_cols = []
+        # Keep ONLY original ENDF columns (no diagnostics)
+        original_cols = []
         if 'Parent' in df_out.columns:
-            keep_cols.append('Parent')
-        keep_cols += ['Endpoint_energy', 'Average_energy', 'Intensity']
-        keep_cols += ['match_quality', 'match_ambiguous', 'energy_difference_keV']
-        keep_cols += ['ensdf_particle_energy_MeV', 'daughter_nuclide']
-        keep_cols = [c for c in keep_cols if c in df_out.columns]
+            original_cols.append('Parent')
+        original_cols += ['Endpoint_energy', 'Average_energy', 'Intensity']
+        
+        # Filter to only columns that exist
+        keep_cols = [c for c in original_cols if c in df_out.columns]
         df_out = df_out[keep_cols]
         
         # Save with proper MultiIndex formatting
@@ -766,10 +766,30 @@ class ENDFLevelMatcherDECAY:
                 f.write(line)
         
         print(f"\nSaved matched DECAY data to: {output_path}")
+        print(f"  Format: Same as input, with updated final_level values")
         print(f"  Total entries: {len(df_out)}")
-        matched_num = len(df_out[df_out['match_quality'] != 'failed'])
-        print(f"  Matched: {matched_num}")
-        print(f"  Failed: {len(df_out) - matched_num}")
+        
+        # Save diagnostics to separate file
+        diag_path = output_path.replace('.ascii', '_diagnostics.ascii')
+        self._save_diagnostics(diag_path)
+    
+    def _save_diagnostics(self, output_path):
+        """Save matching diagnostics to a separate file"""
+        if self.matched_decay_df is None:
+            return
+        
+        df_diag = self.matched_decay_df.copy()
+        
+        # Include diagnostic columns
+        diag_cols = ['A', 'Z', 'parentLevel', 'decay_mode', 'final_level', 
+                     'final_level_matched', 'Parent', 'daughter_nuclide',
+                     'match_quality', 'match_ambiguous', 'energy_difference_keV']
+        
+        diag_cols = [c for c in diag_cols if c in df_diag.columns]
+        df_diag = df_diag[diag_cols]
+        
+        df_diag.to_csv(output_path, sep=' ', float_format='%.4e', na_rep='', index=False)
+        print(f"  Diagnostics saved to: {output_path}")
     
     def export_unmatched(self, filename):
         if not self.unmatched_decays:
