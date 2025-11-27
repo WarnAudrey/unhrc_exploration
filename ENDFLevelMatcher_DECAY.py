@@ -84,13 +84,84 @@ class ENDFLevelMatcherDECAY:
         print(f"  ENDF entries: {len(self.endf_decay_df)}")
         
         print(f"\nLoading ENSDF: {self.ensdf_decay_path}")
-        self.ensdf_decay_df = pd.read_csv(
-            self.ensdf_decay_path, 
-            sep=r'\s+', 
-            comment='#',
-            index_col=[0, 1, 2, 3, 4],
-            engine='python'
+        
+        # Read ENSDF file line by line to handle units
+        lines = []
+        with open(self.ensdf_decay_path, 'r') as f:
+            for line in f:
+                if line.strip() and not line.strip().startswith('#'):
+                    lines.append(line)
+        
+        # Parse header
+        header_line = lines[0]
+        data_lines = lines[1:]
+        
+        # Process data to remove units
+        processed_data = []
+        for line in data_lines:
+            parts = line.split()
+            if len(parts) >= 5:
+                # First 5 are index: A, Z, parentLevel, decay_mode, final_level
+                a = int(parts[0])
+                z = int(parts[1])
+                parent_level = float(parts[2])
+                decay_mode = parts[3]
+                final_level = float(parts[4])
+                
+                # Remaining parts are data columns with units
+                # Format: value unit value unit value unit
+                # Columns in order: Endpoint_energy, Average_energy, Intensity
+                endpoint = np.nan
+                average = np.nan
+                intensity = np.nan
+                
+                remaining = parts[5:]
+                col_idx = 0  # Track which column we're on (0=Endpoint, 1=Average, 2=Intensity)
+                
+                i = 0
+                while i < len(remaining):
+                    # Try to parse as a number
+                    try:
+                        val = float(remaining[i])
+                        # Next item should be the unit
+                        if i + 1 < len(remaining):
+                            unit = remaining[i + 1]
+                            if unit == 'keV':
+                                # Convert keV to eV for consistency with ENDF
+                                val = val * 1e3
+                                if col_idx == 0:
+                                    endpoint = val
+                                    col_idx = 1
+                                elif col_idx == 1:
+                                    average = val
+                                    col_idx = 2
+                                i += 2
+                            elif unit == '%':
+                                intensity = val
+                                i += 2
+                            else:
+                                i += 1
+                        else:
+                            i += 1
+                    except ValueError:
+                        i += 1
+                
+                processed_data.append({
+                    'A': a,
+                    'Z': z,
+                    'parentLevel': parent_level,
+                    'decay_mode': decay_mode,
+                    'final_level': final_level,
+                    'Endpoint_energy': endpoint,
+                    'Average_energy': average,
+                    'Intensity': intensity
+                })
+        
+        self.ensdf_decay_df = pd.DataFrame(processed_data)
+        self.ensdf_decay_df = self.ensdf_decay_df.set_index(
+            ['A', 'Z', 'parentLevel', 'decay_mode', 'final_level']
         )
+        
         print(f"  Index names: {self.ensdf_decay_df.index.names}")
         print(f"  Columns: {list(self.ensdf_decay_df.columns)}")
         print(f"  ENSDF entries: {len(self.ensdf_decay_df)}")
@@ -438,25 +509,30 @@ class ENDFLevelMatcherDECAY:
             raise ValueError("No matched data. Run match_levels() first.")
         
         df_out = self.matched_decay_df.copy()
-        df_out['final_level'] = df_out['final_level_matched'].fillna(
-            df_out['final_level']
-        )
+        
+        # Update final_level with matched values
+        df_out.loc[df_out['final_level_matched'].notna(), 'final_level'] = df_out['final_level_matched']
         
         idx_cols = ['A', 'Z', 'parentLevel', 'decay_mode', 'final_level']
         df_out = df_out.set_index(idx_cols)
         
-        keep_cols = ['Parent', 'Endpoint_energy', 'Average_energy', 'Intensity']
+        # Keep relevant columns (match ENDF format plus diagnostics)
+        keep_cols = []
+        if 'Parent' in df_out.columns:
+            keep_cols.append('Parent')
+        keep_cols += ['Endpoint_energy', 'Average_energy', 'Intensity']
         keep_cols += ['match_quality', 'match_ambiguous', 'energy_difference_keV']
         keep_cols += ['ensdf_level_energy_MeV', 'daughter_nuclide']
         keep_cols = [c for c in keep_cols if c in df_out.columns]
         df_out = df_out[keep_cols]
         
-        df_out.to_csv(output_path, sep=' ', float_format='%.6e')
+        df_out.to_csv(output_path, sep=' ', float_format='%.6e', na_rep='')
         
-        print(f"Saved matched DECAY data to: {output_path}")
+        print(f"\nSaved matched DECAY data to: {output_path}")
         print(f"  Total entries: {len(df_out)}")
         matched_num = len(df_out[df_out['match_quality'] != 'failed'])
         print(f"  Matched: {matched_num}")
+        print(f"  Failed: {len(df_out) - matched_num}")
     
     def export_unmatched(self, filename):
         if not self.unmatched_decays:
