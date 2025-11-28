@@ -993,7 +993,7 @@ if __name__ == "__main__":
     parser.add_argument("--endf", default=default_endf_path, help="Path to ENDF DECAY.ascii")
     parser.add_argument("--ensdf", default=default_ensdf_decay_path, help="Path to ENSDF DECAY.ascii")
     parser.add_argument("--ensdf-level", default=default_ensdf_level_path, help="Path to ENSDF LEVEL.ascii")
-    parser.add_argument("--output", default="DECAY_matched.ascii", help="Output ASCII file")
+    parser.add_argument("--output", default="DECAY_level_matched.ascii", help="Output ASCII file")
     parser.add_argument("--abs-tol", type=float, default=2e4, help="Absolute tolerance in eV (default: 20 keV)")
     parser.add_argument("--rel-tol", type=float, default=1e-2, help="Relative tolerance (default: 1%%)")
     parser.add_argument("--strategy", choices=["absolute", "relative", "hybrid"], default="hybrid", help="Matching strategy")
