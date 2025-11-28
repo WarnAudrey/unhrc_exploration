@@ -28,40 +28,65 @@ WHAT THIS TOOL DOES:
 **Problem**: ENDF entries mostly have final_level=0 (missing daughter level detail)
 **Solution**: Match ENDF particle energies to ENSDF to find which daughter level is populated
 
-Simple Approach - Direct Energy Matching:
-  ENDF:  Li-9 B- decay, Particle Energy = 13,606 keV, final_level = 0 (unknown)
-  ENSDF: Li-9 B- decay options:
-         → Be-9 level 0, Particle Energy = 13,610 keV
-         → Be-9 level 1, Particle Energy = 11,180 keV
-         → Be-9 level 2, Particle Energy = 10,830 keV
-  Match:  13,606 keV ≈ 13,610 keV (difference = 4 keV < 20 keV tolerance)
+Physics-Based Approach - Calculate and Match Level Energies:
+
+The daughter level energy is determined by energy conservation:
+    E_daughter_level = Q_ground - E_particle
+
+Where Q_ground is the ground-to-ground decay energy (maximum particle energy).
+
+Example:
+  Li-9 B- decay, Q_ground = 13,610 keV (from ENSDF ground→ground)
+  
+  ENDF:  Li-9 decay, E_particle = 13,606 keV, final_level = ? (unknown)
+         → Calculate: E_daughter = 13,610 - 13,606 = 4 keV
+  
+  ENSDF options:
+         → Be-9 level 0: E_particle = 13,610 keV → E_level = 13,610 - 13,610 = 0 keV
+         → Be-9 level 1: E_particle = 11,180 keV → E_level = 13,610 - 11,180 = 2,430 keV
+         → Be-9 level 2: E_particle = 10,830 keV → E_level = 13,610 - 10,830 = 2,780 keV
+  
+  Match:  E_daughter(ENDF) = 4 keV ≈ E_level_0(ENSDF) = 0 keV
+          Difference = 4 keV < 20 keV tolerance ✓
+  
   Result: final_level = 0 (decay populates Be-9 ground state)
 
-The key insight: ENSDF already provides particle energies for each transition.
-We don't need to calculate anything - just compare ENDF energy to ENSDF energies!
+This approach is physically correct and explains why we need different tolerances:
+  - Low-lying levels (near ground): Use absolute tolerance (e.g., 20 keV)
+  - High excitation levels: Use relative tolerance (e.g., 1%)
+  - Hybrid: Combine both based on energy threshold
 
 MATCHING ALGORITHM:
 -------------------
 1. Load both databases
    - ENDF: 4,802 transitions with particle energies
    - ENSDF: 28,498 transitions with particle energies + level information
+   - Extract Q_ground (ground-to-ground energy) for each parent/decay_mode
 
 2. Build lookup table from ENSDF:
    - Group by (A, Z, decay_mode)
-   - Store all transitions with their energies and levels
+   - Store all transitions with particle energies and level numbers
    
 3. For each ENDF entry:
-   - Look up all ENSDF transitions for same (A, Z, decay_mode)
-   - Compare ENDF particle energy to each ENSDF particle energy
-   - Find closest match within tolerance
-   - Copy the final_level from that ENSDF transition
+   a) Get Q_ground for this parent/decay_mode
+   b) Calculate ENDF daughter level energy: E_level_ENDF = Q_ground - E_particle_ENDF
+   c) Look up all ENSDF transitions for same (A, Z, decay_mode)
+   d) For each ENSDF transition:
+      - Calculate ENSDF daughter level energy: E_level_ENSDF = Q_ground - E_particle_ENSDF
+      - Compare calculated level energies (not particle energies!)
+      - Calculate tolerance based on level energy
+   e) Find best match within tolerance
+   f) Copy the final_level (daughter level number) from matched ENSDF transition
    
 4. Save enriched ENDF with updated level assignments
 
-Tolerances (configurable):
-   - Absolute: 20 keV (for low energies)
-   - Relative: 1% (for high energies)
+Tolerances (applied to LEVEL ENERGIES):
+   - Absolute: 20 keV (for low-lying excited states)
+   - Relative: 1% (for highly excited states)
    - Hybrid: Use absolute <500 keV, relative >500 keV (default)
+   
+Why this matters: Low-lying levels have fixed spacing (~100 keV), so absolute tolerance 
+works better. High-lying levels have proportional spacing, so relative tolerance works better.
 
 IMPORTANT NOTES:
 ----------------
@@ -646,48 +671,80 @@ class ENDFLevelMatcherDECAY:
         if verbose:
             print(f"    Found {len(transitions)} ENSDF transitions")
         
-        # Search for matching transition
+        # Get Q_ground for level energy calculation
+        q_ground = self.q_ground_lookup.get(key, None)
+        
+        if q_ground is None:
+            # Can't calculate level energies without Q_ground
+            if verbose:
+                print(f"    ✗ No Q_ground available - cannot calculate level energies")
+            return MatchResult(
+                matched=False,
+                parent_level=np.nan,
+                final_level=np.nan,
+                ensdf_energy=np.nan,
+                endf_q_value=endf_particle_energy,
+                energy_diff=np.nan,
+                rel_diff=np.nan,
+                match_quality="no_q_ground",
+                ambiguous=False,
+                daughter_nuclide=daughter_name
+            )
+        
+        # Calculate ENDF daughter level energy
+        endf_daughter_level_energy = q_ground - endf_particle_energy
+        
+        if verbose:
+            print(f"    Q_ground: {q_ground/1e3:.2f} keV")
+            print(f"    ENDF calculated daughter level energy: {endf_daughter_level_energy/1e3:.2f} keV")
+        
+        # Search for matching transition by comparing CALCULATED level energies
         best_match = None
         best_diff = np.inf
         matches_within_tol = []
         
         for trans in transitions:
-            ensdf_energy = trans['particle_energy']
-            abs_diff = abs(ensdf_energy - endf_particle_energy)
+            # Calculate ENSDF daughter level energy
+            ensdf_particle_energy = trans['particle_energy']
+            ensdf_daughter_level_energy = q_ground - ensdf_particle_energy
             
-            # Calculate tolerance based on strategy
+            # Compare the CALCULATED daughter level energies
+            abs_diff = abs(ensdf_daughter_level_energy - endf_daughter_level_energy)
+            
+            # Calculate tolerance based on the LEVEL ENERGY (not particle energy)
             if self.strategy == MatchStrategy.ABSOLUTE:
                 tolerance = self.absolute_tol
             elif self.strategy == MatchStrategy.RELATIVE:
-                tolerance = max(ensdf_energy * self.relative_tol, 1e3)  # Minimum 1 keV
+                tolerance = max(ensdf_daughter_level_energy * self.relative_tol, 1e3)  # Minimum 1 keV
             elif self.strategy == MatchStrategy.HYBRID:
-                # Use absolute for low energies, relative for high energies
-                if ensdf_energy < self.hybrid_threshold:
+                # Use absolute for low-lying levels, relative for highly excited levels
+                if ensdf_daughter_level_energy < self.hybrid_threshold:
                     tolerance = self.absolute_tol
                 else:
-                    tolerance = ensdf_energy * self.relative_tol
+                    tolerance = ensdf_daughter_level_energy * self.relative_tol
             
             # Check if within tolerance
             if abs_diff <= tolerance:
-                matches_within_tol.append((abs_diff, trans, tolerance))
+                matches_within_tol.append((abs_diff, trans, tolerance, ensdf_daughter_level_energy))
             
             # Track best overall match (even if outside tolerance)
             if abs_diff < best_diff:
                 best_diff = abs_diff
-                best_match = (abs_diff, trans, tolerance)
+                best_match = (abs_diff, trans, tolerance, ensdf_daughter_level_energy)
         
         # -------------------------
         # Return best match within tolerance
         # -------------------------
         if matches_within_tol:
-            # Sort by energy difference, take best
+            # Sort by level energy difference, take best
             matches_within_tol.sort(key=lambda x: x[0])
-            abs_diff, trans, tol = matches_within_tol[0]
+            abs_diff, trans, tol, ensdf_level_energy = matches_within_tol[0]
             
-            rel_diff = abs_diff / max(trans['particle_energy'], 1e-6)
+            # Relative difference based on level energy
+            rel_diff = abs_diff / max(ensdf_level_energy, 1e-6)
             ambiguous = len(matches_within_tol) > 1  # Multiple matches?
             
-            # Classify match quality
+            # Classify match quality based on level energy difference
             if abs_diff < tol * 0.1:
                 quality = "exact"     # Within 10% of tolerance
             elif abs_diff < tol * 0.5:
@@ -699,8 +756,9 @@ class ENDFLevelMatcherDECAY:
                 p_lvl = int(trans['parent_level'])
                 d_lvl = int(trans['daughter_level'])
                 print(f"    ✓ Matched: parent_level={p_lvl}, daughter_level={d_lvl}")
-                print(f"      ENSDF energy: {trans['particle_energy']/1e3:.2f} keV")
-                print(f"      Difference: {abs_diff/1e3:.2f} keV ({quality})")
+                print(f"      ENSDF daughter level energy: {ensdf_level_energy/1e3:.2f} keV")
+                print(f"      ENDF daughter level energy: {endf_daughter_level_energy/1e3:.2f} keV")
+                print(f"      Level energy difference: {abs_diff/1e3:.2f} keV ({quality})")
             
             return MatchResult(
                 matched=True,
@@ -708,7 +766,7 @@ class ENDFLevelMatcherDECAY:
                 final_level=trans['daughter_level'],
                 ensdf_energy=trans['particle_energy'],
                 endf_q_value=endf_particle_energy,
-                energy_diff=abs_diff,
+                energy_diff=abs_diff,  # This is now level energy difference
                 rel_diff=rel_diff,
                 match_quality=quality,
                 ambiguous=ambiguous,
@@ -719,14 +777,16 @@ class ENDFLevelMatcherDECAY:
         # Try relaxed tolerance (5x normal)
         # -------------------------
         if best_match:
-            abs_diff, trans, tol = best_match
+            abs_diff, trans, tol, ensdf_level_energy = best_match
             if abs_diff <= tol * self.relaxed_factor:
-                rel_diff = abs_diff / max(trans['particle_energy'], 1e-6)
+                rel_diff = abs_diff / max(ensdf_level_energy, 1e-6)
                 if verbose:
                     p_lvl = int(trans['parent_level'])
                     d_lvl = int(trans['daughter_level'])
                     print(f"    ~ Marginal: parent_level={p_lvl}, daughter_level={d_lvl}")
-                    print(f"      Difference: {abs_diff/1e3:.2f} keV")
+                    print(f"      ENSDF level energy: {ensdf_level_energy/1e3:.2f} keV")
+                    print(f"      ENDF level energy: {endf_daughter_level_energy/1e3:.2f} keV")
+                    print(f"      Level energy difference: {abs_diff/1e3:.2f} keV")
                 
                 return MatchResult(
                     matched=True,
@@ -734,7 +794,7 @@ class ENDFLevelMatcherDECAY:
                     final_level=trans['daughter_level'],
                     ensdf_energy=trans['particle_energy'],
                     endf_q_value=endf_particle_energy,
-                    energy_diff=abs_diff,
+                    energy_diff=abs_diff,  # Level energy difference
                     rel_diff=rel_diff,
                     match_quality="marginal",
                     ambiguous=False,
@@ -746,8 +806,11 @@ class ENDFLevelMatcherDECAY:
         # -------------------------
         if verbose:
             if best_match:
-                _, trans, _ = best_match
-                print(f"    ✗ No match (closest: {trans['particle_energy']/1e3:.2f} keV, diff: {best_diff/1e3:.2f} keV)")
+                _, trans, _, ensdf_level_energy = best_match
+                print(f"    ✗ No match")
+                print(f"       Closest ENSDF level: {ensdf_level_energy/1e3:.2f} keV")
+                print(f"       ENDF calculated level: {endf_daughter_level_energy/1e3:.2f} keV")
+                print(f"       Level energy difference: {best_diff/1e3:.2f} keV (exceeds tolerance)")
         
         return MatchResult(
             matched=False,
@@ -755,8 +818,8 @@ class ENDFLevelMatcherDECAY:
             final_level=np.nan,
             ensdf_energy=best_match[1]['particle_energy'] if best_match else np.nan,
             endf_q_value=endf_particle_energy,
-            energy_diff=best_diff,
-            rel_diff=best_diff / max(best_match[1]['particle_energy'], 1e-6) if best_match else np.nan,
+            energy_diff=best_diff,  # Level energy difference
+            rel_diff=best_diff / max(best_match[3], 1e-6) if best_match else np.nan,  # best_match[3] is ensdf_level_energy
             match_quality="failed",
             ambiguous=False,
             daughter_nuclide=daughter_name
