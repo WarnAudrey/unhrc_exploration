@@ -221,16 +221,18 @@ class ENDFLevelMatcherDECAY:
     match_results: List of MatchResult objects for all transitions
     """
     
-    def __init__(self, endf_decay_path, ensdf_decay_path):
+    def __init__(self, endf_decay_path, ensdf_decay_path, ensdf_level_path):
         """
         Initialize matcher and load databases.
         
         Args:
             endf_decay_path: Path to ENDF DECAY.ascii file
             ensdf_decay_path: Path to ENSDF DECAY.ascii file
+            ensdf_level_path: Path to ENSDF LEVEL.ascii file
         """
         self.endf_decay_path = Path(endf_decay_path)
         self.ensdf_decay_path = Path(ensdf_decay_path)
+        self.ensdf_level_path = Path(ensdf_level_path)
         
         # Default tolerances (energies in eV)
         self.absolute_tol = 2e4  # 20 keV
@@ -244,10 +246,12 @@ class ENDFLevelMatcherDECAY:
         self.unmatched_decays = []
         self.endf_decay_df = None
         self.ensdf_decay_df = None
+        self.ensdf_level_df = None
         self.matched_decay_df = None
         
         # Load data and build lookups
         self._load_decay_files()
+        self._load_level_file()
         self._build_ensdf_lookup()
     
     def _load_decay_files(self):
@@ -374,6 +378,77 @@ class ENDFLevelMatcherDECAY:
         print(f"  ENSDF entries: {len(self.ensdf_decay_df)}")
         print("="*70 + "\n")
     
+    def _load_level_file(self):
+        """
+        Load ENSDF LEVEL.ascii file containing nuclear level energies.
+        
+        ENSDF LEVEL Format:
+        -------------------
+        Space-separated ASCII with MultiIndex (A, Z, level):
+                     elementName          energy energyUnit  twoTimesSpin  spinParity ...
+        A   Z   level
+        1   0   0         Neutron   0.000e+00 keV        keV  1.00000000e+00 ...
+        4   2   0          Helium   0.000e+00 keV        keV  0.00000000e+00 ...
+        4   2   1          Helium   2.021e+04 keV        keV  0.00000000e+00 ...
+        
+        This provides the TRUE level energies directly from ENSDF structure database.
+        """
+        print("\n" + "="*70)
+        print("LOADING ENSDF LEVEL FILE")
+        print("="*70)
+        print(f"  Loading from: {self.ensdf_level_path}")
+        
+        # Read line-by-line to handle units
+        processed_data = []
+        with open(self.ensdf_level_path, 'r') as f:
+            for line_num, line in enumerate(f):
+                if line_num == 0:
+                    # Skip header line
+                    continue
+                
+                parts = line.strip().split()
+                if len(parts) < 5:
+                    continue
+                
+                try:
+                    a = int(parts[0])
+                    z = int(parts[1])
+                    level = int(parts[2])
+                    
+                    # Energy is in parts[4], unit in parts[5]
+                    energy_str = parts[4]
+                    unit_str = parts[5] if len(parts) > 5 else 'keV'
+                    
+                    # Parse energy (may have scientific notation)
+                    energy_val = float(energy_str)
+                    
+                    # Convert to eV
+                    if 'keV' in unit_str:
+                        energy_eV = energy_val * 1e3
+                    elif 'MeV' in unit_str:
+                        energy_eV = energy_val * 1e6
+                    elif 'eV' in unit_str and 'keV' not in unit_str and 'MeV' not in unit_str:
+                        energy_eV = energy_val
+                    else:
+                        energy_eV = energy_val * 1e3  # Assume keV if unclear
+                    
+                    processed_data.append({
+                        'A': a,
+                        'Z': z,
+                        'level': level,
+                        'energy_eV': energy_eV
+                    })
+                except (ValueError, IndexError):
+                    continue
+        
+        # Convert to DataFrame
+        self.ensdf_level_df = pd.DataFrame(processed_data)
+        self.ensdf_level_df = self.ensdf_level_df.set_index(['A', 'Z', 'level'])
+        
+        print(f"  Loaded {len(self.ensdf_level_df)} level entries")
+        print(f"  Energy range: {self.ensdf_level_df['energy_eV'].min()/1e3:.1f} - {self.ensdf_level_df['energy_eV'].max()/1e6:.1f} keV - MeV")
+        print("="*70 + "\n")
+    
     def _get_daughter_nucleus(self, parent_a, parent_z, decay_mode):
         """
         Calculate daughter nucleus (A, Z) from parent and decay mode.
@@ -435,25 +510,25 @@ class ENDFLevelMatcherDECAY:
     
     def _build_ensdf_lookup(self):
         """
-        Build ENSDF lookups: daughter level energy tables + transition catalog.
+        Build ENSDF lookups using native level energies from LEVEL.ascii.
         
         Purpose:
         --------
         Create TWO complementary structures:
-        1. Daughter level energy table: (daughter_A, daughter_Z) → {level_num: level_energy}
-        2. Transition catalog: (parent_A, parent_Z, decay_mode) → [list of transitions]
+        1. Daughter level energy table: Direct from ENSDF LEVEL.ascii (NO calculations!)
+        2. Transition catalog: From ENSDF DECAY.ascii
         
         Key Insight:
         ------------
-        ENSDF gives us: final_level + Endpoint_energy
-        We calculate level energy ONCE: Level Energy = Q_ground - Particle Energy
+        ENSDF LEVEL.ascii already contains the true nuclear level energies.
+        We simply organize them for fast lookup during matching.
         
         Lookups Created:
         ----------------
-        self.daughter_levels: Dict[(daughter_A, daughter_Z)] → {
-            0: 0,           # Ground state always at 0 eV
-            1: 2430000,     # First excited state
-            2: 2780000,     # Second excited state
+        self.daughter_levels: Dict[(A, Z)] → {
+            0: 0,           # Ground state at 0 eV
+            1: 2021000,     # First excited state (from LEVEL.ascii)
+            2: 2101000,     # Second excited state (from LEVEL.ascii)
             ...
         }
         
@@ -466,23 +541,46 @@ class ENDFLevelMatcherDECAY:
         self.q_ground_lookup: Dict[(parent_A, parent_Z, decay_mode)] → Q_ground_energy_eV
         """
         print("Building ENSDF lookups...")
-        print("  Step 1: Finding Q_ground for each parent/decay_mode...")
+        print("  Step 1: Building daughter level energy table from LEVEL.ascii...")
         
-        ensdf_reset = self.ensdf_decay_df.reset_index()
+        # -------------------------
+        # Step 1: Build daughter level energy table directly from LEVEL data
+        # -------------------------
+        self.daughter_levels = {}  # (A, Z) → {level_num: level_energy}
         
-        self.daughter_levels = {}      # (daughter_A, daughter_Z) → {level_num: level_energy}
+        ensdf_level_reset = self.ensdf_level_df.reset_index()
+        for idx, row in ensdf_level_reset.iterrows():
+            a = int(row['A'])
+            z = int(row['Z'])
+            level = int(row['level'])
+            energy = float(row['energy_eV'])
+            
+            key = (a, z)
+            if key not in self.daughter_levels:
+                self.daughter_levels[key] = {}
+            
+            self.daughter_levels[key][level] = energy
+        
+        total_nuclei = len(self.daughter_levels)
+        total_levels = sum(len(levels) for levels in self.daughter_levels.values())
+        print(f"    Built level tables for {total_nuclei} nuclei ({total_levels} total levels)")
+        
+        # -------------------------
+        # Step 2: Build transition catalog and Q_ground from DECAY data
+        # -------------------------
+        print("  Step 2: Building transition catalog from DECAY.ascii...")
+        
+        ensdf_decay_reset = self.ensdf_decay_df.reset_index()
+        
         self.transition_lookup = {}    # (parent_A, parent_Z, decay_mode) → [transitions]
         self.q_ground_lookup = {}      # (parent_A, parent_Z, decay_mode) → Q_ground
         
-        # -------------------------
-        # Step 1: Find Q_ground (ground-to-ground energy) for all parents
-        # -------------------------
-        for idx, row in ensdf_reset.iterrows():
+        for idx, row in ensdf_decay_reset.iterrows():
             parent_a = int(row['A'])
             parent_z = int(row['Z'])
             parent_level = float(row['parentLevel'])
             decay_mode = str(row['decay_mode'])
-            daughter_level = float(row['final_level'])
+            daughter_level = int(row['final_level'])
             
             # Get particle energy
             endpoint = row.get('Endpoint_energy', np.nan)
@@ -492,64 +590,15 @@ class ENDFLevelMatcherDECAY:
             if pd.isna(particle_energy):
                 continue
             
-            key = (parent_a, parent_z, decay_mode)
+            parent_key = (parent_a, parent_z, decay_mode)
             
             # Track Q_ground (ground to ground transition energy)
             if parent_level == 0 and daughter_level == 0:
-                if key not in self.q_ground_lookup:
-                    self.q_ground_lookup[key] = particle_energy
+                if parent_key not in self.q_ground_lookup:
+                    self.q_ground_lookup[parent_key] = particle_energy
                 else:
                     # Take maximum (most energetic ground-to-ground transition)
-                    self.q_ground_lookup[key] = max(self.q_ground_lookup[key], particle_energy)
-        
-        print(f"    Found Q_ground for {len(self.q_ground_lookup)} parent/decay_mode combinations")
-        
-        # -------------------------
-        # Step 2: Build daughter level energy tables AND transition catalog
-        # -------------------------
-        print("  Step 2: Building daughter level tables and transition catalog...")
-        
-        for idx, row in ensdf_reset.iterrows():
-            parent_a = int(row['A'])
-            parent_z = int(row['Z'])
-            parent_level = float(row['parentLevel'])
-            decay_mode = str(row['decay_mode'])
-            daughter_level_num = int(row['final_level'])
-            
-            # Get particle energy
-            endpoint = row.get('Endpoint_energy', np.nan)
-            average = row.get('Average_energy', np.nan)
-            particle_energy = endpoint if not pd.isna(endpoint) else average
-            
-            if pd.isna(particle_energy):
-                continue
-            
-            # Get Q_ground for this parent
-            parent_key = (parent_a, parent_z, decay_mode)
-            q_ground = self.q_ground_lookup.get(parent_key, None)
-            
-            if q_ground is None:
-                continue
-            
-            # Calculate daughter nucleus (A, Z)
-            daughter_a, daughter_z = self._get_daughter_nucleus(parent_a, parent_z, decay_mode)
-            daughter_key = (daughter_a, daughter_z)
-            
-            # Calculate daughter level energy: E_level = Q_ground - E_particle
-            level_energy = q_ground - particle_energy
-            
-            # Store in daughter level table
-            if daughter_key not in self.daughter_levels:
-                self.daughter_levels[daughter_key] = {}
-            
-            # If same level appears multiple times (different parents), take minimum
-            if daughter_level_num not in self.daughter_levels[daughter_key]:
-                self.daughter_levels[daughter_key][daughter_level_num] = level_energy
-            else:
-                self.daughter_levels[daughter_key][daughter_level_num] = min(
-                    self.daughter_levels[daughter_key][daughter_level_num],
-                    level_energy
-                )
+                    self.q_ground_lookup[parent_key] = max(self.q_ground_lookup[parent_key], particle_energy)
             
             # Store transition in catalog
             if parent_key not in self.transition_lookup:
@@ -557,17 +606,14 @@ class ENDFLevelMatcherDECAY:
             
             self.transition_lookup[parent_key].append({
                 'parent_level': parent_level,
-                'daughter_level': daughter_level_num,
+                'daughter_level': daughter_level,
                 'particle_energy': particle_energy
             })
         
-        total_daughters = len(self.daughter_levels)
-        total_levels = sum(len(levels) for levels in self.daughter_levels.values())
         total_parents = len(self.transition_lookup)
         total_transitions = sum(len(v) for v in self.transition_lookup.values())
-        
-        print(f"    Built level tables for {total_daughters} daughter nuclei ({total_levels} unique levels)")
         print(f"    Cataloged {total_transitions} transitions for {total_parents} parent nuclei")
+        print(f"    Found Q_ground for {len(self.q_ground_lookup)} parent/decay_mode combinations")
         
         # -------------------------
         # Step 3: Add Q_ground from ENDF for missing parents
@@ -1289,7 +1335,8 @@ if __name__ == "__main__":
     )
     
     default_endf_path = "/Users/audreywarn/fluka-db-audrey/outputs/endf/endf_data_modules/ascii/DECAY.ascii"
-    default_ensdf_path = "/Users/audreywarn/fluka-db-audrey/outputs/ensdf/json_data_modules/ascii/DECAY.ascii"
+    default_ensdf_decay_path = "/Users/audreywarn/fluka-db-audrey/outputs/ensdf/json_data_modules/ascii/DECAY.ascii"
+    default_ensdf_level_path = "/Users/audreywarn/fluka-db-audrey/outputs/ensdf/json_data_modules/ascii/LEVEL.ascii"
     
     parser.add_argument(
         "--endf", 
@@ -1298,8 +1345,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--ensdf", 
-        default=default_ensdf_path, 
+        default=default_ensdf_decay_path, 
         help="Path to ENSDF DECAY.ascii"
+    )
+    parser.add_argument(
+        "--ensdf-level", 
+        default=default_ensdf_level_path, 
+        help="Path to ENSDF LEVEL.ascii"
     )
     parser.add_argument(
         "--output", 
@@ -1338,7 +1390,8 @@ if __name__ == "__main__":
     # Create matcher
     matcher = ENDFLevelMatcherDECAY(
         endf_decay_path=args.endf, 
-        ensdf_decay_path=args.ensdf
+        ensdf_decay_path=args.ensdf,
+        ensdf_level_path=args.ensdf_level
     )
     
     # Set tolerances
