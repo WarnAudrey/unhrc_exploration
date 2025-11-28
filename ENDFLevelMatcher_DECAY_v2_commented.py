@@ -28,22 +28,40 @@ WHAT THIS TOOL DOES:
 **Problem**: ENDF entries mostly have final_level=0 (missing daughter level detail)
 **Solution**: Match ENDF particle energies to ENSDF to find which daughter level is populated
 
-Example:
-  ENDF:  Li-9 B- decay, E=13,606 keV, final_level=0 (unknown)
-  ENSDF: Li-9 → Be-9 level 0 (13,610 keV), level 1 (11,180 keV), level 2 (10,830 keV)...
-  Match:  E=13,606 keV matches level 0 (13,610 keV) within 4 keV
-  Result: Update ENDF final_level: 0 → 0 (confirmed ground state)
+Simple Approach - Direct Energy Matching:
+  ENDF:  Li-9 B- decay, Particle Energy = 13,606 keV, final_level = 0 (unknown)
+  ENSDF: Li-9 B- decay options:
+         → Be-9 level 0, Particle Energy = 13,610 keV
+         → Be-9 level 1, Particle Energy = 11,180 keV
+         → Be-9 level 2, Particle Energy = 10,830 keV
+  Match:  13,606 keV ≈ 13,610 keV (difference = 4 keV < 20 keV tolerance)
+  Result: final_level = 0 (decay populates Be-9 ground state)
 
-MATCHING STRATEGY:
-------------------
-1. Load ENDF transitions (parent → daughter with particle energy, mostly final_level=0)
-2. Load ENSDF transitions (includes particle energy AND daughter level information)
-3. For each ENDF transition:
-   - Compare ENDF particle energy to all ENSDF particle energies for same parent/decay_mode
-   - Find best match within tolerance (default: 20 keV absolute or 1% relative)
-   - Copy daughter level (final_level) from matched ENSDF entry
-   - Also copy parent level for completeness (but will be 0 in current ENSDF)
-4. Save enriched ENDF with updated level information
+The key insight: ENSDF already provides particle energies for each transition.
+We don't need to calculate anything - just compare ENDF energy to ENSDF energies!
+
+MATCHING ALGORITHM:
+-------------------
+1. Load both databases
+   - ENDF: 4,802 transitions with particle energies
+   - ENSDF: 28,498 transitions with particle energies + level information
+
+2. Build lookup table from ENSDF:
+   - Group by (A, Z, decay_mode)
+   - Store all transitions with their energies and levels
+   
+3. For each ENDF entry:
+   - Look up all ENSDF transitions for same (A, Z, decay_mode)
+   - Compare ENDF particle energy to each ENSDF particle energy
+   - Find closest match within tolerance
+   - Copy the final_level from that ENSDF transition
+   
+4. Save enriched ENDF with updated level assignments
+
+Tolerances (configurable):
+   - Absolute: 20 keV (for low energies)
+   - Relative: 1% (for high energies)
+   - Hybrid: Use absolute <500 keV, relative >500 keV (default)
 
 IMPORTANT NOTES:
 ----------------
