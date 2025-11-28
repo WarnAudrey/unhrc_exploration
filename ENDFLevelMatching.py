@@ -624,28 +624,41 @@ class ENDFLevelMatcher:
             # Compare level energies
             abs_diff = abs(ensdf_daughter_level_energy - endf_daughter_level_energy)
             
-            # Calculate tolerance
+            # Calculate tolerance based on selected strategy
             if self.strategy == MatchStrategy.ABSOLUTE:
+                # Pure absolute tolerance (fixed energy difference)
                 tolerance = self.absolute_tol
+                strategy_used = "absolute"
+                
             elif self.strategy == MatchStrategy.RELATIVE:
-                tolerance = max(ensdf_daughter_level_energy * self.relative_tol, 1e3)
+                # Pure relative tolerance (percentage of level energy)
+                tolerance = max(ensdf_daughter_level_energy * self.relative_tol, 1e3)  # Min 1 keV
+                strategy_used = "relative"
+                
             elif self.strategy == MatchStrategy.HYBRID:
+                # Hybrid: absolute for low-lying states, relative for highly excited states
                 if ensdf_daughter_level_energy < self.hybrid_threshold:
                     tolerance = self.absolute_tol
+                    strategy_used = "hybrid(abs)"
                 else:
                     tolerance = ensdf_daughter_level_energy * self.relative_tol
+                    strategy_used = "hybrid(rel)"
+            else:
+                # Fallback to absolute
+                tolerance = self.absolute_tol
+                strategy_used = "absolute"
             
             if abs_diff <= tolerance:
-                matches_within_tol.append((abs_diff, trans, tolerance, ensdf_daughter_level_energy))
+                matches_within_tol.append((abs_diff, trans, tolerance, ensdf_daughter_level_energy, strategy_used))
             
             if abs_diff < best_diff:
                 best_diff = abs_diff
-                best_match = (abs_diff, trans, tolerance, ensdf_daughter_level_energy)
+                best_match = (abs_diff, trans, tolerance, ensdf_daughter_level_energy, strategy_used)
         
         # Return best match within tolerance
         if matches_within_tol:
             matches_within_tol.sort(key=lambda x: x[0])
-            abs_diff, trans, tol, ensdf_level_energy = matches_within_tol[0]
+            abs_diff, trans, tol, ensdf_level_energy, strategy_used = matches_within_tol[0]
             
             rel_diff = abs_diff / max(ensdf_level_energy, 1e-6)
             ambiguous = len(matches_within_tol) > 1
@@ -659,7 +672,8 @@ class ENDFLevelMatcher:
             
             if verbose:
                 print(f"    ✓ Matched: parent_level={int(trans['parent_level'])}, daughter_level={int(trans['daughter_level'])}")
-                print(f"      Level energy difference: {abs_diff/1e3:.2f} keV ({quality})")
+                print(f"      Level energy difference: {abs_diff/1e3:.2f} keV ({quality}, {strategy_used})")
+                print(f"      Tolerance used: {tol/1e3:.2f} keV")
             
             return MatchResult(
                 matched=True,
@@ -676,11 +690,12 @@ class ENDFLevelMatcher:
         
         # Try relaxed tolerance
         if best_match:
-            abs_diff, trans, tol, ensdf_level_energy = best_match
+            abs_diff, trans, tol, ensdf_level_energy, strategy_used = best_match
             if abs_diff <= tol * self.relaxed_factor:
                 rel_diff = abs_diff / max(ensdf_level_energy, 1e-6)
                 if verbose:
-                    print(f"    ~ Marginal match: {abs_diff/1e3:.2f} keV")
+                    print(f"    ~ Marginal match: {abs_diff/1e3:.2f} keV ({strategy_used}, relaxed)")
+                    print(f"      Relaxed tolerance: {tol * self.relaxed_factor / 1e3:.2f} keV")
                 
                 return MatchResult(
                     matched=True,
@@ -697,7 +712,8 @@ class ENDFLevelMatcher:
         
         # No match found
         if verbose and best_match:
-            print(f"    ✗ No match (best: {best_diff/1e3:.2f} keV)")
+            _, _, tol, _, strategy_used = best_match
+            print(f"    ✗ No match (best: {best_diff/1e3:.2f} keV exceeds {strategy_used} tolerance {tol/1e3:.2f} keV)")
         
         return MatchResult(
             matched=False,
@@ -718,11 +734,13 @@ class ENDFLevelMatcher:
         print("ENDF-ENSDF TRANSITION MATCHING")
         print("="*70)
         print(f"Strategy: {self.strategy.value}")
-        print(f"Absolute tolerance: {self.absolute_tol/1e3:.3f} keV")
-        print(f"Relative tolerance: {self.relative_tol*100:.4f}%")
+        print(f"  • Absolute tolerance: {self.absolute_tol/1e3:.3f} keV")
+        print(f"  • Relative tolerance: {self.relative_tol*100:.4f}%")
         if self.strategy == MatchStrategy.HYBRID:
-            print(f"Hybrid threshold: {self.hybrid_threshold/1e3:.1f} keV")
-        print(f"Total ENDF decays: {len(self.endf_decay_df)}")
+            print(f"  • Hybrid threshold: {self.hybrid_threshold/1e3:.1f} keV")
+            print(f"    (use absolute below threshold, relative above)")
+        print(f"  • Relaxed factor: {self.relaxed_factor}x (for marginal matches)")
+        print(f"\nTotal ENDF decays: {len(self.endf_decay_df)}")
         print("="*70 + "\n")
         
         self.match_results = []
