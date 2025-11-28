@@ -171,8 +171,8 @@ class ENDFLevelMatcher:
         self.ensdf_level_path = Path(ensdf_level_path)
         
         # Default tolerances (energies in eV)
-        self.absolute_tol = 2e4  # 20 keV
-        self.relative_tol = 1e-2  # 1%
+        self.absolute_tol = 1e3  # 1 keV (10^3 eV)
+        self.relative_tol = 1e-3  # 0.1% (10^-3)
         self.strategy = MatchStrategy.HYBRID
         self.hybrid_threshold = 5e5  # 500 keV
         self.relaxed_factor = 5.0
@@ -1012,8 +1012,8 @@ if __name__ == "__main__":
     parser.add_argument("--ensdf", default=default_ensdf_decay_path, help="Path to ENSDF DECAY.ascii")
     parser.add_argument("--ensdf-level", default=default_ensdf_level_path, help="Path to ENSDF LEVEL.ascii")
     parser.add_argument("--output", default="DECAY_level_matched.ascii", help="Output ASCII file")
-    parser.add_argument("--abs-tol", type=float, default=2e4, help="Absolute tolerance in eV (default: 20 keV)")
-    parser.add_argument("--rel-tol", type=float, default=1e-2, help="Relative tolerance (default: 1%%)")
+    parser.add_argument("--abs-tol", type=float, default=1e3, help="Absolute tolerance in eV (default: 1 keV = 10^3 eV)")
+    parser.add_argument("--rel-tol", type=float, default=1e-3, help="Relative tolerance (default: 0.1%% = 10^-3)")
     parser.add_argument("--strategy", choices=["absolute", "relative", "hybrid"], default="hybrid", help="Matching strategy")
     parser.add_argument("--export-unmatched", help="Export unmatched decays to ASCII file")
     parser.add_argument("--export-details", help="Export match details to ASCII file")
