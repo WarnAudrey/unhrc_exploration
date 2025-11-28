@@ -435,39 +435,37 @@ class ENDFLevelMatcherDECAY:
     
     def _build_ensdf_lookup(self):
         """
-        Build lookup table of all ENSDF transitions with calculated level energies.
+        Build daughter nucleus level energy tables from ENSDF.
         
         Purpose:
         --------
-        Create fast lookup structure: (parent_A, Z, decay_mode) → list of transitions
-        Each transition contains: parent_level, daughter_level, particle_energy, AND daughter_level_energy
+        Extract the mapping: final_level → Endpoint_energy that ENSDF already provides.
+        Calculate level energies ONCE for each unique daughter nucleus level.
         
-        Key Physics:
+        Key Insight:
         ------------
-        Daughter level energy = Q_ground - E_particle
-        We calculate this ONCE during lookup building, then use it for all matching.
+        ENSDF gives us: Level Number → Particle Energy
+        We calculate: Level Energy = Q_ground - Particle Energy
         
         Lookups Created:
         ----------------
-        self.transition_lookup: Dict[(A,Z,mode)] → [
-            {'parent_level': 0, 'daughter_level': 0, 'particle_energy': 3508000, 'daughter_level_energy': 0},
-            {'parent_level': 0, 'daughter_level': 1, 'particle_energy': 2500000, 'daughter_level_energy': 1008000},
+        self.daughter_levels: Dict[(daughter_A, daughter_Z)] → {
+            level_number: level_energy_eV,
+            0: 0,           # Ground state always at 0 eV
+            1: 2430000,     # First excited state
+            2: 2780000,     # Second excited state
             ...
-        ]
+        }
         
-        self.q_ground_lookup: Dict[(A,Z,mode)] → max_particle_energy (eV)
-        
-        Fallback:
-        ---------
-        If Q_ground not in ENSDF, use ENDF's maximum energy as estimate
+        self.q_ground_lookup: Dict[(parent_A, parent_Z, decay_mode)] → Q_ground_energy_eV
         """
-        print("Building ENSDF transition lookup...")
+        print("Building ENSDF daughter level energy tables...")
         print("  Step 1: Finding Q_ground for each parent/decay_mode...")
         
         ensdf_reset = self.ensdf_decay_df.reset_index()
         
-        self.transition_lookup = {}
-        self.q_ground_lookup = {}
+        self.daughter_levels = {}  # (daughter_A, daughter_Z) → {level_num: level_energy}
+        self.q_ground_lookup = {}  # (parent_A, parent_Z, decay_mode) → Q_ground
         
         # -------------------------
         # Step 1: Find Q_ground (ground-to-ground energy) for all parents
@@ -500,16 +498,15 @@ class ENDFLevelMatcherDECAY:
         print(f"    Found Q_ground for {len(self.q_ground_lookup)} parent/decay_mode combinations")
         
         # -------------------------
-        # Step 2: Catalog all ENSDF transitions with calculated daughter level energies
+        # Step 2: Build daughter nucleus level energy tables
         # -------------------------
-        print("  Step 2: Calculating daughter level energies for all transitions...")
+        print("  Step 2: Building daughter level energy tables...")
         
         for idx, row in ensdf_reset.iterrows():
             parent_a = int(row['A'])
             parent_z = int(row['Z'])
-            parent_level = float(row['parentLevel'])
             decay_mode = str(row['decay_mode'])
-            daughter_level = float(row['final_level'])
+            daughter_level_num = int(row['final_level'])
             
             # Get particle energy
             endpoint = row.get('Endpoint_energy', np.nan)
@@ -519,33 +516,38 @@ class ENDFLevelMatcherDECAY:
             if pd.isna(particle_energy):
                 continue
             
-            key = (parent_a, parent_z, decay_mode)
-            
             # Get Q_ground for this parent
-            q_ground = self.q_ground_lookup.get(key, None)
+            parent_key = (parent_a, parent_z, decay_mode)
+            q_ground = self.q_ground_lookup.get(parent_key, None)
             
             if q_ground is None:
-                # Can't calculate level energy without Q_ground - skip
                 continue
             
+            # Calculate daughter nucleus (A, Z)
+            daughter_a, daughter_z = self._get_daughter_nucleus(parent_a, parent_z, decay_mode)
+            daughter_key = (daughter_a, daughter_z)
+            
             # Calculate daughter level energy: E_level = Q_ground - E_particle
-            daughter_level_energy = q_ground - particle_energy
+            level_energy = q_ground - particle_energy
             
-            # Add to transition list with calculated level energy
-            if key not in self.transition_lookup:
-                self.transition_lookup[key] = []
+            # Store in daughter level table
+            if daughter_key not in self.daughter_levels:
+                self.daughter_levels[daughter_key] = {}
             
-            self.transition_lookup[key].append({
-                'parent_level': parent_level,
-                'daughter_level': daughter_level,
-                'particle_energy': particle_energy,
-                'daughter_level_energy': daughter_level_energy  # Pre-calculated!
-            })
+            # If same level appears multiple times (different parents), take average or keep first
+            if daughter_level_num not in self.daughter_levels[daughter_key]:
+                self.daughter_levels[daughter_key][daughter_level_num] = level_energy
+            else:
+                # Take the minimum (most consistent with ground state = 0)
+                self.daughter_levels[daughter_key][daughter_level_num] = min(
+                    self.daughter_levels[daughter_key][daughter_level_num],
+                    level_energy
+                )
         
-        total_parents = len(self.transition_lookup)
-        total_transitions = sum(len(v) for v in self.transition_lookup.values())
-        print(f"    Built {total_transitions} transitions for {total_parents} parent nuclei")
-        print(f"    All transitions include pre-calculated daughter level energies")
+        total_daughters = len(self.daughter_levels)
+        total_levels = sum(len(levels) for levels in self.daughter_levels.values())
+        print(f"    Built level tables for {total_daughters} daughter nuclei")
+        print(f"    Total unique levels: {total_levels}")
         
         # -------------------------
         # Step 3: Add Q_ground from ENDF for missing parents
