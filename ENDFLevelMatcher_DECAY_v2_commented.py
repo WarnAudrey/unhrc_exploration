@@ -61,24 +61,26 @@ MATCHING ALGORITHM:
 1. Load both databases
    - ENDF: 4,802 transitions with particle energies
    - ENSDF: 28,498 transitions with particle energies + level information
-   - Extract Q_ground (ground-to-ground energy) for each parent/decay_mode
 
-2. Build lookup table from ENSDF:
-   - Group by (A, Z, decay_mode)
-   - Store all transitions with particle energies and level numbers
+2. Build ENSDF lookup table with pre-calculated level energies:
+   a) Extract Q_ground for each (A, Z, decay_mode) from ground→ground transitions
+   b) For each ENSDF transition, calculate daughter level energy ONCE:
+      E_level_ENSDF = Q_ground - E_particle_ENSDF
+   c) Store in lookup: (A, Z, mode) → [level_energy, level_number, particle_energy]
+   d) Add Q_ground from ENDF for parents not in ENSDF (fallback)
    
-3. For each ENDF entry:
+3. Match each ENDF entry:
    a) Get Q_ground for this parent/decay_mode
    b) Calculate ENDF daughter level energy: E_level_ENDF = Q_ground - E_particle_ENDF
-   c) Look up all ENSDF transitions for same (A, Z, decay_mode)
-   d) For each ENSDF transition:
-      - Calculate ENSDF daughter level energy: E_level_ENSDF = Q_ground - E_particle_ENSDF
-      - Compare calculated level energies (not particle energies!)
-      - Calculate tolerance based on level energy
-   e) Find best match within tolerance
-   f) Copy the final_level (daughter level number) from matched ENSDF transition
+   c) Look up ENSDF transitions for same (A, Z, decay_mode)
+   d) Compare ENDF calculated level energy to ENSDF pre-calculated level energies
+   e) Apply tolerance based on level energy (not particle energy!)
+   f) Find best match and copy the final_level number
    
 4. Save enriched ENDF with updated level assignments
+
+Key Efficiency: ENSDF level energies calculated ONCE during lookup building,
+not recalculated for every match!
 
 Tolerances (applied to LEVEL ENERGIES):
    - Absolute: 20 keV (for low-lying excited states)
@@ -433,21 +435,23 @@ class ENDFLevelMatcherDECAY:
     
     def _build_ensdf_lookup(self):
         """
-        Build lookup table of all ENSDF transitions.
+        Build lookup table of all ENSDF transitions with calculated level energies.
         
         Purpose:
         --------
         Create fast lookup structure: (parent_A, Z, decay_mode) → list of transitions
-        Each transition contains: parent_level, daughter_level, particle_energy
+        Each transition contains: parent_level, daughter_level, particle_energy, AND daughter_level_energy
         
-        Also builds Q_ground lookup: (parent_A, Z, decay_mode) → maximum particle energy
-        Q_ground is the ground-to-ground transition energy (parent_level=0, daughter_level=0)
+        Key Physics:
+        ------------
+        Daughter level energy = Q_ground - E_particle
+        We calculate this ONCE during lookup building, then use it for all matching.
         
         Lookups Created:
         ----------------
         self.transition_lookup: Dict[(A,Z,mode)] → [
-            {'parent_level': 0, 'daughter_level': 0, 'particle_energy': 3508000},
-            {'parent_level': 0, 'daughter_level': 1, 'particle_energy': 2500000},
+            {'parent_level': 0, 'daughter_level': 0, 'particle_energy': 3508000, 'daughter_level_energy': 0},
+            {'parent_level': 0, 'daughter_level': 1, 'particle_energy': 2500000, 'daughter_level_energy': 1008000},
             ...
         ]
         
@@ -458,7 +462,7 @@ class ENDFLevelMatcherDECAY:
         If Q_ground not in ENSDF, use ENDF's maximum energy as estimate
         """
         print("Building ENSDF transition lookup...")
-        print("  Cataloging all transitions with (parent_level, daughter_level, energy)...")
+        print("  Step 1: Finding Q_ground for each parent/decay_mode...")
         
         ensdf_reset = self.ensdf_decay_df.reset_index()
         
@@ -466,7 +470,7 @@ class ENDFLevelMatcherDECAY:
         self.q_ground_lookup = {}
         
         # -------------------------
-        # Step 1: Catalog all ENSDF transitions
+        # Step 1: Find Q_ground (ground-to-ground energy) for all parents
         # -------------------------
         for idx, row in ensdf_reset.iterrows():
             parent_a = int(row['A'])
@@ -475,26 +479,15 @@ class ENDFLevelMatcherDECAY:
             decay_mode = str(row['decay_mode'])
             daughter_level = float(row['final_level'])
             
-            # Get particle energy (prefer endpoint, fallback to average)
+            # Get particle energy
             endpoint = row.get('Endpoint_energy', np.nan)
             average = row.get('Average_energy', np.nan)
             particle_energy = endpoint if not pd.isna(endpoint) else average
             
             if pd.isna(particle_energy):
-                continue  # Skip entries without energy data
+                continue
             
-            # Key: unique parent + decay mode
             key = (parent_a, parent_z, decay_mode)
-            
-            # Add to transition list
-            if key not in self.transition_lookup:
-                self.transition_lookup[key] = []
-            
-            self.transition_lookup[key].append({
-                'parent_level': parent_level,
-                'daughter_level': daughter_level,
-                'particle_energy': particle_energy
-            })
             
             # Track Q_ground (ground to ground transition energy)
             if parent_level == 0 and daughter_level == 0:
@@ -504,17 +497,62 @@ class ENDFLevelMatcherDECAY:
                     # Take maximum (most energetic ground-to-ground transition)
                     self.q_ground_lookup[key] = max(self.q_ground_lookup[key], particle_energy)
         
-        total_parents = len(self.transition_lookup)
-        total_transitions = sum(len(v) for v in self.transition_lookup.values())
-        print(f"    Found {total_transitions} transitions for {total_parents} parent nuclei")
-        print(f"    Q_ground available for {len(self.q_ground_lookup)} parents")
+        print(f"    Found Q_ground for {len(self.q_ground_lookup)} parent/decay_mode combinations")
         
         # -------------------------
-        # Step 2: Add Q_ground from ENDF for missing parents
+        # Step 2: Catalog all ENSDF transitions with calculated daughter level energies
+        # -------------------------
+        print("  Step 2: Calculating daughter level energies for all transitions...")
+        
+        for idx, row in ensdf_reset.iterrows():
+            parent_a = int(row['A'])
+            parent_z = int(row['Z'])
+            parent_level = float(row['parentLevel'])
+            decay_mode = str(row['decay_mode'])
+            daughter_level = float(row['final_level'])
+            
+            # Get particle energy
+            endpoint = row.get('Endpoint_energy', np.nan)
+            average = row.get('Average_energy', np.nan)
+            particle_energy = endpoint if not pd.isna(endpoint) else average
+            
+            if pd.isna(particle_energy):
+                continue
+            
+            key = (parent_a, parent_z, decay_mode)
+            
+            # Get Q_ground for this parent
+            q_ground = self.q_ground_lookup.get(key, None)
+            
+            if q_ground is None:
+                # Can't calculate level energy without Q_ground - skip
+                continue
+            
+            # Calculate daughter level energy: E_level = Q_ground - E_particle
+            daughter_level_energy = q_ground - particle_energy
+            
+            # Add to transition list with calculated level energy
+            if key not in self.transition_lookup:
+                self.transition_lookup[key] = []
+            
+            self.transition_lookup[key].append({
+                'parent_level': parent_level,
+                'daughter_level': daughter_level,
+                'particle_energy': particle_energy,
+                'daughter_level_energy': daughter_level_energy  # Pre-calculated!
+            })
+        
+        total_parents = len(self.transition_lookup)
+        total_transitions = sum(len(v) for v in self.transition_lookup.values())
+        print(f"    Built {total_transitions} transitions for {total_parents} parent nuclei")
+        print(f"    All transitions include pre-calculated daughter level energies")
+        
+        # -------------------------
+        # Step 3: Add Q_ground from ENDF for missing parents
         # -------------------------
         # Some parents exist in ENDF but not in ENSDF
         # Use ENDF's maximum energy as estimated Q_ground
-        print("  Adding Q_ground from ENDF for missing parents...")
+        print("  Step 3: Adding Q_ground from ENDF for missing parents...")
         endf_reset = self.endf_decay_df.reset_index()
         
         added = 0
@@ -548,7 +586,7 @@ class ENDFLevelMatcherDECAY:
         
         print(f"    Added {added} Q_ground values from ENDF")
         print(f"    Total Q_ground available: {len(self.q_ground_lookup)}")
-        print("  Lookup complete!\n")
+        print("  Lookup complete! All ENSDF levels have pre-calculated energies.\n")
     
     def set_tolerances(self, absolute_tol=None, relative_tol=None, 
                       strategy=None, hybrid_threshold=None, 
@@ -691,24 +729,24 @@ class ENDFLevelMatcherDECAY:
                 daughter_nuclide=daughter_name
             )
         
-        # Calculate ENDF daughter level energy
+        # Calculate ENDF daughter level energy from particle energy
         endf_daughter_level_energy = q_ground - endf_particle_energy
         
         if verbose:
             print(f"    Q_ground: {q_ground/1e3:.2f} keV")
             print(f"    ENDF calculated daughter level energy: {endf_daughter_level_energy/1e3:.2f} keV")
         
-        # Search for matching transition by comparing CALCULATED level energies
+        # Search for matching transition by comparing level energies
+        # ENSDF level energies were pre-calculated during lookup building
         best_match = None
         best_diff = np.inf
         matches_within_tol = []
         
         for trans in transitions:
-            # Calculate ENSDF daughter level energy
-            ensdf_particle_energy = trans['particle_energy']
-            ensdf_daughter_level_energy = q_ground - ensdf_particle_energy
+            # Get pre-calculated ENSDF daughter level energy
+            ensdf_daughter_level_energy = trans['daughter_level_energy']
             
-            # Compare the CALCULATED daughter level energies
+            # Compare ENDF calculated level energy to ENSDF stored level energy
             abs_diff = abs(ensdf_daughter_level_energy - endf_daughter_level_energy)
             
             # Calculate tolerance based on the LEVEL ENERGY (not particle energy)
