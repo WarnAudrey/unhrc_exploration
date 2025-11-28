@@ -10,44 +10,54 @@ Enriches ENDF data with detailed level information from ENSDF.
 DATABASES:
 ----------
 - ENDF (Evaluated Nuclear Data File): Decay data library
-  - Wide coverage: ~1,600 nuclides, ~4,800 transitions
-  - Shallow depth: 1-3 transitions per nuclide
-  - Contains: Particle energies, branching ratios
-  - Missing: Detailed level information
+  - Coverage: 4,802 decay transitions
+  - Strategy: Representative transition per decay mode (one entry per parent/mode)
+  - Contains: Particle energies (endpoint/average), branching ratios, half-lives
+  - Missing: Daughter level information (final_level mostly 0)
 
 - ENSDF (Evaluated Nuclear Structure Data File): Nuclear structure + decay database
-  - Narrow coverage: ~800 nuclides, ~28,000 transitions  
-  - Deep detail: 10-40 transitions per nuclide
-  - Contains: Complete level schemes, all decay branches
-  - All entries have parentLevel=0 (ground state decays)
+  - Coverage: 28,498 decay transitions
+  - Strategy: Complete decay schemes (all branches to all daughter levels)
+  - Contains: Complete level schemes with all decay branches
+  - **Key Finding**: ALL entries have parentLevel=0 (only ground state parent decays)
+    → This is NORMAL - excited states decay via gamma (fast), not beta/alpha (slow)
+    → Only rare long-lived isomers would have parentLevel>0
 
-PHYSICS BACKGROUND:
--------------------
-For radioactive decay from parent level E_parent to daughter level E_daughter:
-    E_particle = Q_ground + E_parent - E_daughter
+WHAT THIS TOOL DOES:
+--------------------
+**Problem**: ENDF entries mostly have final_level=0 (missing daughter level detail)
+**Solution**: Match ENDF particle energies to ENSDF to find which daughter level is populated
 
-Where:
-    Q_ground = ground-to-ground decay energy (maximum particle energy)
-    E_parent = excitation energy of parent nucleus
-    E_daughter = excitation energy of daughter nucleus
-    E_particle = observed particle (beta, alpha, etc.) energy
+Example:
+  ENDF:  Li-9 B- decay, E=13,606 keV, final_level=0 (unknown)
+  ENSDF: Li-9 → Be-9 level 0 (13,610 keV), level 1 (11,180 keV), level 2 (10,830 keV)...
+  Match:  E=13,606 keV matches level 0 (13,610 keV) within 4 keV
+  Result: Update ENDF final_level: 0 → 0 (confirmed ground state)
 
 MATCHING STRATEGY:
 ------------------
-1. Load ENDF transitions (parent → daughter with particle energy)
-2. Load ENSDF transitions (complete with parent_level, daughter_level, energy)
+1. Load ENDF transitions (parent → daughter with particle energy, mostly final_level=0)
+2. Load ENSDF transitions (includes particle energy AND daughter level information)
 3. For each ENDF transition:
-   - Compare ENDF particle energy to all ENSDF particle energies
-   - Find best match within tolerance
-   - Return both parent_level and daughter_level from matched ENSDF entry
-4. Update ENDF with matched level information
+   - Compare ENDF particle energy to all ENSDF particle energies for same parent/decay_mode
+   - Find best match within tolerance (default: 20 keV absolute or 1% relative)
+   - Copy daughter level (final_level) from matched ENSDF entry
+   - Also copy parent level for completeness (but will be 0 in current ENSDF)
+4. Save enriched ENDF with updated level information
 
 IMPORTANT NOTES:
 ----------------
-- ENSDF has ALL parentLevel=0 (only ground state decays in current dataset)
-- ENDF also has mostly parentLevel=0 (physical - most decays from ground states)
-- final_level DOES get updated (0 → 1, 2, 3, etc.) - this is the key enrichment
-- Matching returns BOTH levels for completeness, but parent is always 0
+- **parentLevel stays 0**: ENSDF only contains ground state decays (parentLevel=0)
+  → Physical: Excited states decay via gamma before beta/alpha decay occurs
+  → If you see parentLevel=0 everywhere in output, this is CORRECT
+  
+- **final_level DOES update**: This is the key enrichment (e.g., 0 → 1, 2, 3)
+  → Shows which daughter level is populated by the decay
+  → Enables gamma cascade reconstruction
+  
+- **Not all transitions match**: 
+  → 73.6% match rate achieved (3,533 / 4,802)
+  → Failures due to: no ENSDF data, energy mismatch, or assumed ground states
 
 OUTPUT:
 -------
