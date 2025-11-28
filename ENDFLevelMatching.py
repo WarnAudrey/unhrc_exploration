@@ -818,7 +818,28 @@ class ENDFLevelMatcher:
         print(f"\nFailure breakdown:")
         print(f"  ✗ No ENSDF data: {no_ensdf}")
         print(f"  ✗ Energy mismatch: {failed}")
-        print(f"  Total failed: {no_ensdf + failed}\n")
+        print(f"  Total failed: {no_ensdf + failed}")
+        
+        # Analyze failed matches
+        failed_matches = [m for m in self.match_results if m.match_quality == "failed" and not np.isnan(m.energy_diff)]
+        if failed_matches:
+            failed_diffs = [m.energy_diff for m in failed_matches]
+            print(f"\nFailed match energy differences (keV):")
+            print(f"  Min:      {np.min(failed_diffs)/1e3:8.3f}")
+            print(f"  Median:   {np.median(failed_diffs)/1e3:8.3f}")
+            print(f"  Mean:     {np.mean(failed_diffs)/1e3:8.3f}")
+            print(f"  Max:      {np.max(failed_diffs)/1e3:8.3f}")
+            
+            # Count how many would match with relaxed tolerances
+            within_10keV = sum(1 for d in failed_diffs if d <= 1e4)
+            within_100keV = sum(1 for d in failed_diffs if d <= 1e5)
+            within_1MeV = sum(1 for d in failed_diffs if d <= 1e6)
+            
+            print(f"\nFailed matches that would pass with higher tolerance:")
+            print(f"  Within 10 keV:   {within_10keV:4d} ({100*within_10keV/len(failed_diffs):.1f}%)")
+            print(f"  Within 100 keV:  {within_100keV:4d} ({100*within_100keV/len(failed_diffs):.1f}%)")
+            print(f"  Within 1 MeV:    {within_1MeV:4d} ({100*within_1MeV/len(failed_diffs):.1f}%)")
+        print()
         
         self.matched_decay_df = endf_reset
         return self.matched_decay_df
