@@ -580,6 +580,11 @@ class ENDFLevelMatcherDECAY:
             parent_z = int(row['Z'])
             parent_level = float(row['parentLevel'])
             decay_mode = str(row['decay_mode'])
+            
+            # Skip if final_level is NaN
+            if pd.isna(row['final_level']):
+                continue
+            
             daughter_level = int(row['final_level'])
             
             # Get particle energy
