@@ -71,9 +71,13 @@ MATCHING ALGORITHM:
    d) Return matched level number
 
 Tolerances (applied to LEVEL ENERGIES):
-   - Absolute: 20 keV (for low-lying excited states)
-   - Relative: 1% (for highly excited states)
-   - Hybrid: Use absolute <500 keV, relative >500 keV (default)
+   - Absolute: Fixed tolerance (e.g., 1 keV for low-lying excited states)
+   - Relative: Follows math.isclose() convention: rel_tol * max(|a|, |b|)
+     (e.g., 0.1% for highly excited states, default: 0.1%)
+   - Hybrid: Use absolute <500 keV, relative >500 keV (default strategy)
+   
+   Note: Relative tolerance implementation follows Python's math.isclose() logic,
+   where tolerance = rel_tol * max(abs(ensdf_energy), abs(endf_energy))
 
 OUTPUT:
 -------
@@ -88,6 +92,7 @@ DATE: 2025-11-26
 # IMPORTS
 # =============================================================================
 
+import math  # For mathematical operations and isclose() reference logic
 import numpy as np  # Numerical operations (NaN handling, statistics)
 import pandas as pd  # DataFrame operations for tabular nuclear data
 from typing import Dict, List, Tuple, Optional  # Type hints for code clarity
@@ -709,9 +714,13 @@ class ENDFLevelMatcher:
         - Tight tolerances: More accurate but fewer matches
         - Loose tolerances: More matches but potentially incorrect
         
+        Relative tolerance follows math.isclose() convention:
+            tolerance = rel_tol * max(abs(ensdf_energy), abs(endf_energy))
+        This ensures symmetric comparison between the two energy values.
+        
         Args:
-            absolute_tol: Fixed energy tolerance in eV (e.g., 20000 for 20 keV)
-            relative_tol: Fractional tolerance (e.g., 0.01 for 1%)
+            absolute_tol: Fixed energy tolerance in eV (e.g., 1000 for 1 keV)
+            relative_tol: Fractional tolerance (e.g., 0.001 for 0.1%)
             strategy: "absolute", "relative", or "hybrid"
             hybrid_threshold: Energy (eV) where hybrid switches from absolute to relative
             relaxed_factor: Multiplier for marginal matches (e.g., 5.0 for 5x tolerance)
@@ -919,7 +928,9 @@ class ENDFLevelMatcher:
             elif self.strategy == MatchStrategy.RELATIVE:
                 # Pure relative tolerance (percentage of level energy)
                 # Good for highly excited states where uncertainty scales with energy
-                tolerance = max(ensdf_daughter_level_energy * self.relative_tol, 1e3)  # Min 1 keV
+                # Following math.isclose() logic: rel_tol * max(|a|, |b|)
+                max_energy = max(abs(ensdf_daughter_level_energy), abs(endf_daughter_level_energy))
+                tolerance = max(self.relative_tol * max_energy, self.absolute_tol)
                 strategy_used = "relative"
                 
             elif self.strategy == MatchStrategy.HYBRID:
@@ -929,7 +940,9 @@ class ENDFLevelMatcher:
                     tolerance = self.absolute_tol
                     strategy_used = "hybrid(abs)"
                 else:
-                    tolerance = ensdf_daughter_level_energy * self.relative_tol
+                    # Following math.isclose() logic: rel_tol * max(|a|, |b|)
+                    max_energy = max(abs(ensdf_daughter_level_energy), abs(endf_daughter_level_energy))
+                    tolerance = max(self.relative_tol * max_energy, self.absolute_tol)
                     strategy_used = "hybrid(rel)"
             else:
                 # Fallback to absolute (should never happen)
