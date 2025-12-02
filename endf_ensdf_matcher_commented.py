@@ -237,6 +237,77 @@ class ENDFLevelMatcher:
         self._load_decay_files()       # Step 1: Load ENDF and ENSDF decay data
         self._load_level_file()        # Step 2: Load ENSDF level energies
         self._build_ensdf_lookup()     # Step 3: Build fast lookup dictionaries
+        
+        # =====================================================================
+        # DIAGNOSTIC: Check Q-values for specific cases
+        # =====================================================================
+        print("\n" + "="*70)
+        print("Q-VALUE DIAGNOSTIC")
+        print("="*70)
+        print(f"Total Q-values in lookup: {len(self.q_ground_lookup)}")
+        
+        # Check Li-11 specifically (known problematic case)
+        key = (11, 3, 'B-')
+        if key in self.q_ground_lookup:
+            q = self.q_ground_lookup[key]
+            print(f"\nLi-11 B- decay:")
+            print(f"  Q_ground used: {q/1e3:.2f} keV ({q:.2e} eV)")
+            
+            # Determine source
+            if key in self.transition_lookup:
+                print(f"  Source: ENSDF (has transitions in DECAY.ascii)")
+                # Show some transitions
+                transitions = self.transition_lookup[key]
+                print(f"  Number of ENSDF transitions: {len(transitions)}")
+                if transitions:
+                    print(f"  First transition:")
+                    print(f"    parent_level={transitions[0]['parent_level']}, "
+                          f"daughter_level={transitions[0]['daughter_level']}")
+                    print(f"    particle_energy={transitions[0]['particle_energy']/1e3:.2f} keV")
+                    if len(transitions) > 1:
+                        print(f"  Second transition:")
+                        print(f"    parent_level={transitions[1]['parent_level']}, "
+                              f"daughter_level={transitions[1]['daughter_level']}")
+                        print(f"    particle_energy={transitions[1]['particle_energy']/1e3:.2f} keV")
+            else:
+                print(f"  Source: ENDF (no ENSDF transitions, used ENDF Q-value)")
+        else:
+            print(f"\nLi-11 B- decay: NOT FOUND in Q-value lookup!")
+        
+        # Check Be-12 for comparison (known successful case)
+        key2 = (12, 4, 'B-')
+        if key2 in self.q_ground_lookup:
+            q2 = self.q_ground_lookup[key2]
+            print(f"\nBe-12 B- decay (for comparison):")
+            print(f"  Q_ground used: {q2/1e3:.2f} keV ({q2:.2e} eV)")
+            source = 'ENSDF' if key2 in self.transition_lookup else 'ENDF'
+            print(f"  Source: {source}")
+            if key2 in self.transition_lookup:
+                transitions2 = self.transition_lookup[key2]
+                print(f"  Number of ENSDF transitions: {len(transitions2)}")
+        
+        # Check daughter nucleus level energies
+        print(f"\nDaughter nucleus level energies:")
+        
+        # Be-11 levels (daughter of Li-11)
+        daughter_key = (11, 4)
+        if daughter_key in self.daughter_levels:
+            be11_levels = self.daughter_levels[daughter_key]
+            print(f"  Be-11 (daughter of Li-11):")
+            for level_num in sorted(be11_levels.keys())[:5]:  # Show first 5 levels
+                print(f"    Level {level_num}: {be11_levels[level_num]/1e3:.2f} keV")
+        else:
+            print(f"  Be-11: NOT FOUND in daughter levels!")
+        
+        # B-12 levels (daughter of Be-12)
+        daughter_key2 = (12, 5)
+        if daughter_key2 in self.daughter_levels:
+            b12_levels = self.daughter_levels[daughter_key2]
+            print(f"  B-12 (daughter of Be-12):")
+            for level_num in sorted(b12_levels.keys())[:5]:  # Show first 5 levels
+                print(f"    Level {level_num}: {b12_levels[level_num]/1e3:.2f} keV")
+        
+        print("="*70 + "\n")
     
     def _load_decay_files(self):
         """
