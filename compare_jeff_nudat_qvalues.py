@@ -27,15 +27,19 @@ NUDAT_Q_VALUES = {
     
     # C-9 EC decay
     (9, 6, 'EC'): 16500.0,  # NuDat: ~16.5 MeV
+    (9, 6, 'EC/B+'): 16500.0,  # Also check EC/B+ format
     
     # C-10 EC decay
     (10, 6, 'EC'): 3648.0,  # NuDat: 3,648.12 keV
+    (10, 6, 'EC/B+'): 3648.0,  # Also check EC/B+ format
     
     # Be-7 EC decay
     (7, 4, 'EC'): 861.82,  # NuDat: 861.82 keV
+    (7, 4, 'EC/B+'): 861.82,  # Also check EC/B+ format
     
     # N-12 EC decay
     (12, 7, 'EC'): 17338.0,  # NuDat: 17,338 keV
+    (12, 7, 'EC/B+'): 17338.0,  # Also check EC/B+ format
     
     # Be-12 β- decay
     (12, 4, 'B-'): 11710.0,  # NuDat: 11,710 keV (for comparison - should be OK)
@@ -45,6 +49,11 @@ NUDAT_Q_VALUES = {
     
     # H-3 β- decay
     (3, 1, 'B-'): 18.59,  # NuDat: 18.59 keV (for comparison)
+    
+    # Add more examples for EC decays (common minimal value cases)
+    (8, 4, 'EC/B+'): 18900.0,  # Be-8 EC, NuDat: ~18.9 MeV
+    (11, 6, 'EC/B+'): 12620.0,  # C-11 EC, NuDat: 12,620 keV
+    (13, 7, 'EC/B+'): 10419.0,  # N-13 EC, NuDat: 10,419 keV
 }
 
 def decode_rtyp_simple(rtyp):
@@ -276,6 +285,118 @@ def scan_for_all_small_qvalues(jeff_file, threshold_ev=100):
     
     return small_qvalues
 
+def check_particle_energies(jeff_file):
+    """
+    Check PARTICLE ENERGIES (not Q-values) from JEFF file.
+    
+    These are the STYP energies (ER_AV) that were causing issues
+    in the level matching code.
+    """
+    parser = ENDFNumericDecayParser()
+    parser.load_file(jeff_file)
+    
+    small_energies = []
+    normal_energies = []
+    
+    print(f"\n{'='*80}")
+    print(f"CHECKING PARTICLE ENERGIES (STYP ER_AV) IN JEFF-4.0")
+    print(f"{'='*80}\n")
+    
+    # Scan through file
+    parser._pos = 0
+    sections_checked = 0
+    
+    while parser._pos < len(parser._lines):
+        try:
+            if parser._scan_to_mf_mt(8, 457):
+                sections_checked += 1
+                data = parser._parse_mf8_mt457()
+                
+                za = data["ZA"]
+                A = za % 1000
+                Z = za // 1000
+                element = ATOMIC_SYMBOL.get(Z, f'Z{Z}')
+                nuclide = f"{element}-{A}"
+                
+                # Check spectra for particle energies
+                if "spectra" in data:
+                    for spec in data["spectra"]:
+                        styp = spec.get("STYP", -1)
+                        
+                        # Get ER_AV (average particle energy)
+                        if "ER_AV" in spec and spec["ER_AV"]:
+                            er_av = spec["ER_AV"][0] if isinstance(spec["ER_AV"], tuple) else spec["ER_AV"]
+                            er_av_ev = float(er_av)
+                            er_av_kev = er_av_ev / 1000.0
+                            
+                            # Determine spectrum type
+                            styp_names = {0: "γ", 1: "β-", 2: "β+", 4: "α", 8: "X-ray", 9: "Auger"}
+                            styp_name = styp_names.get(styp, f"STYP{styp}")
+                            
+                            entry = {
+                                'nuclide': nuclide,
+                                'A': A,
+                                'Z': Z,
+                                'styp': styp,
+                                'styp_name': styp_name,
+                                'energy_ev': er_av_ev,
+                                'energy_kev': er_av_kev
+                            }
+                            
+                            if er_av_ev < 100:
+                                small_energies.append(entry)
+                            else:
+                                normal_energies.append(entry)
+                
+                parser._pos += 1
+            else:
+                break
+        except EOFError:
+            break
+        except Exception as e:
+            parser._pos += 1
+            continue
+    
+    print(f"Processed {sections_checked} decay sections\n")
+    
+    # Report small energies
+    if small_energies:
+        print(f"{'='*80}")
+        print(f"FOUND {len(small_energies)} PARTICLE ENERGIES < 100 eV")
+        print(f"{'='*80}\n")
+        
+        # Group by STYP
+        from collections import defaultdict
+        by_styp = defaultdict(list)
+        for e in small_energies:
+            by_styp[e['styp_name']].append(e)
+        
+        for styp_name, entries in sorted(by_styp.items()):
+            print(f"\n{styp_name} particles with energy < 100 eV: {len(entries)} cases")
+            print(f"{'Nuclide':<12} {'Energy (eV)':<15} {'Energy (keV)':<15}")
+            print(f"{'-'*45}")
+            for entry in sorted(entries, key=lambda x: x['energy_ev'])[:10]:
+                print(f"{entry['nuclide']:<12} {entry['energy_ev']:<15.6e} {entry['energy_kev']:<15.6e}")
+            if len(entries) > 10:
+                print(f"... and {len(entries) - 10} more")
+    else:
+        print(f"✓ NO PARTICLE ENERGIES < 100 eV FOUND")
+        print(f"  All {len(normal_energies)} particle energies are > 100 eV")
+    
+    print(f"\n{'='*80}")
+    print(f"SUMMARY: Particle Energies")
+    print(f"{'='*80}")
+    print(f"Total particle energies checked: {len(small_energies) + len(normal_energies)}")
+    print(f"  < 100 eV (minimal):  {len(small_energies)}")
+    print(f"  ≥ 100 eV (normal):   {len(normal_energies)}")
+    
+    if small_energies:
+        pct = 100.0 * len(small_energies) / (len(small_energies) + len(normal_energies))
+        print(f"  Percentage minimal:  {pct:.1f}%")
+    
+    return small_energies, normal_energies
+
+
 if __name__ == "__main__":
     import argparse
     import numpy as np
@@ -298,6 +419,11 @@ if __name__ == "__main__":
         default=100.0,
         help="Threshold in eV for small Q-values (default: 100)"
     )
+    parser.add_argument(
+        "--check-energies",
+        action="store_true",
+        help="Check particle energies (STYP ER_AV) instead of Q-values"
+    )
     
     args = parser.parse_args()
     
@@ -305,6 +431,11 @@ if __name__ == "__main__":
     if not Path(args.jeff_file).exists():
         print(f"Error: File not found: {args.jeff_file}")
         sys.exit(1)
+    
+    # Check particle energies if requested
+    if args.check_energies:
+        small_energies, normal_energies = check_particle_energies(args.jeff_file)
+        sys.exit(0)
     
     # Run comparison
     comparisons, small_qvalues = compare_qvalues(args.jeff_file)
